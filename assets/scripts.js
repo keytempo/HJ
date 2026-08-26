@@ -13,6 +13,17 @@ const GLOW_MIN_VIEWPORT = PANEL_WIDTH;
 // px of soft overlap between one panel's glow and the next, so consecutive
 // glows blend into each other instead of showing a hard seam.
 const GLOW_OVERLAP = 120;
+// Small-screen-only gesture: two quick taps toggles fullscreen. These bound
+// what counts as a single "tap" (quick, roughly stationary) and how close
+// together in time two taps must land to count as a double-tap rather than
+// two unrelated taps.
+const DOUBLE_TAP_MAX_INTERVAL = 300; // ms
+const DOUBLE_TAP_MAX_DISTANCE = 24; // px
+// Below this viewport width .reader goes full-bleed (see styles.css) — the
+// same cutoff is used here as "small screen", since the gesture is aimed at
+// phones and doesn't make sense once there's a fixed-width column sitting
+// inside a wider viewport.
+const SMALL_SCREEN_MAX_WIDTH = PANEL_WIDTH;
 
 class ArchiveRequestError extends Error {
   constructor(message, status = null) {
@@ -80,6 +91,12 @@ let wheelFinishTimer = null;
 let isWheelPullArmed = false;
 let isNavigating = false;
 let resizeFrame = null;
+let tapStartX = null;
+let tapStartY = null;
+let tapStartTime = 0;
+let lastTapTime = 0;
+let lastTapX = 0;
+let lastTapY = 0;
 
 function updateScale() {
   if (reader.hidden) return;
@@ -447,6 +464,108 @@ function handleTouchCancel() {
   resetPull();
 }
 
+function isFullscreenSupported() {
+  const doc = document.documentElement;
+  return !!(
+    doc.requestFullscreen ||
+    doc.webkitRequestFullscreen ||
+    doc.mozRequestFullScreen ||
+    doc.msRequestFullscreen
+  );
+}
+
+function isFullscreenActive() {
+  return !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.mozFullScreenElement ||
+    document.msFullscreenElement
+  );
+}
+
+function toggleFullscreen() {
+  if (isFullscreenActive()) {
+    const exit =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.mozCancelFullScreen ||
+      document.msExitFullscreen;
+    exit?.call(document)?.catch?.((error) =>
+      console.warn("Couldn't exit fullscreen:", error),
+    );
+    return;
+  }
+
+  const doc = document.documentElement;
+  const request =
+    doc.requestFullscreen ||
+    doc.webkitRequestFullscreen ||
+    doc.mozRequestFullScreen ||
+    doc.msRequestFullscreen;
+  request?.call(doc)?.catch?.((error) =>
+    console.warn("Couldn't enter fullscreen:", error),
+  );
+}
+
+function handleFullscreenTapStart(event) {
+  if (event.touches.length !== 1) {
+    tapStartX = null;
+    return;
+  }
+  tapStartX = event.touches[0].clientX;
+  tapStartY = event.touches[0].clientY;
+  tapStartTime = event.timeStamp;
+}
+
+// Tracked independently of the pull-to-navigate gesture above — this only
+// cares whether two quick, roughly-stationary taps landed close together in
+// time and space, not about scroll position or direction.
+function handleFullscreenTapEnd(event) {
+  if (tapStartX === null) return;
+  const startX = tapStartX;
+  const startY = tapStartY;
+  const startTime = tapStartTime;
+  tapStartX = null;
+
+  if (window.innerWidth > SMALL_SCREEN_MAX_WIDTH) return;
+  if (!isFullscreenSupported()) return;
+
+  // A double-tap on a control (retry button, continue link, ...) should
+  // only trigger that control, not also toggle fullscreen.
+  if (event.target.closest?.("button, a, input, textarea, select")) return;
+
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+
+  const dx = touch.clientX - startX;
+  const dy = touch.clientY - startY;
+  const isStationaryTap =
+    Math.hypot(dx, dy) < DOUBLE_TAP_MAX_DISTANCE &&
+    event.timeStamp - startTime < DOUBLE_TAP_MAX_INTERVAL;
+
+  if (!isStationaryTap) {
+    lastTapTime = 0;
+    return;
+  }
+
+  const sinceLastTap = event.timeStamp - lastTapTime;
+  const driftFromLastTap = Math.hypot(startX - lastTapX, startY - lastTapY);
+
+  if (
+    lastTapTime &&
+    sinceLastTap < DOUBLE_TAP_MAX_INTERVAL &&
+    driftFromLastTap < DOUBLE_TAP_MAX_DISTANCE
+  ) {
+    lastTapTime = 0; // consumed, so a third fast tap starts a fresh pair
+    toggleFullscreen();
+    return;
+  }
+
+  lastTapTime = event.timeStamp;
+  lastTapX = startX;
+  lastTapY = startY;
+}
+
 function handleScroll() {
   if (!isAtBottom()) {
     isWheelPullArmed = false;
@@ -564,6 +683,12 @@ function attachViewerEvents() {
   window.addEventListener("touchmove", handleTouchMove, { passive: false });
   window.addEventListener("touchend", handleTouchEnd, { passive: true });
   window.addEventListener("touchcancel", handleTouchCancel, { passive: true });
+  window.addEventListener("touchstart", handleFullscreenTapStart, {
+    passive: true,
+  });
+  window.addEventListener("touchend", handleFullscreenTapEnd, {
+    passive: true,
+  });
   window.addEventListener("keydown", handleKeydown);
 }
 

@@ -25,6 +25,10 @@ body {
     min-height: 100%;
     overflow-x: hidden;
     overscroll-behavior-x: none;
+    /* Keeps scrolling and pinch-zoom native, but drops the browser's own
+       double-tap-to-zoom so it doesn't fight the double-tap-to-fullscreen
+       gesture on small screens (see scripts.js). */
+    touch-action: manipulation;
 }
 
 html {

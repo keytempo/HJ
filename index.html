@@ -62,12 +62,27 @@
             <p class="eyebrow">End of episode</p>
             <h2 id="episode-end-title"></h2>
             <p class="episode-end__detail" id="episode-end-detail"></p>
-            <a class="episode-end__continue" id="episode-end-continue" hidden>
-                <span>
-                    <strong id="next-episode-title"></strong>
-                </span>
-                <span class="episode-end__arrow"><i class="fa-solid fa-arrow-right"></i></span>
-            </a>
+            <div class="episode-end__nav">
+                <a
+                    class="episode-end__arrow"
+                    id="episode-end-prev"
+                    aria-label="Previous episode"
+                    hidden
+                    ><i class="fa-solid fa-arrow-left"></i
+                ></a>
+                <a class="episode-end__continue" id="episode-end-continue" hidden>
+                    <span>
+                        <strong id="next-episode-title"></strong>
+                    </span>
+                </a>
+                <a
+                    class="episode-end__arrow"
+                    id="episode-end-next"
+                    aria-label="Next episode"
+                    hidden
+                    ><i class="fa-solid fa-arrow-right"></i
+                ></a>
+            </div>
         </section>
 
         <div class="next-episode" id="next-episode" aria-live="polite" hidden>

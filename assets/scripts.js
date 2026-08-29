@@ -13,17 +13,13 @@ const GLOW_MIN_VIEWPORT = PANEL_WIDTH;
 // px of soft overlap between one panel's glow and the next, so consecutive
 // glows blend into each other instead of showing a hard seam.
 const GLOW_OVERLAP = 120;
-// Small-screen-only gesture: two quick taps toggles fullscreen. These bound
-// what counts as a single "tap" (quick, roughly stationary) and how close
-// together in time two taps must land to count as a double-tap rather than
-// two unrelated taps.
+// Touch-only gesture (bound to touchstart/touchend below, not click/dblclick):
+// two quick taps toggles fullscreen, on any touch device regardless of
+// viewport size. These bound what counts as a single "tap" (quick, roughly
+// stationary) and how close together in time two taps must land to count as
+// a double-tap rather than two unrelated taps.
 const DOUBLE_TAP_MAX_INTERVAL = 300; // ms
 const DOUBLE_TAP_MAX_DISTANCE = 24; // px
-// Below this viewport width .reader goes full-bleed (see styles.css) — the
-// same cutoff is used here as "small screen", since the gesture is aimed at
-// phones and doesn't make sense once there's a fixed-width column sitting
-// inside a wider viewport.
-const SMALL_SCREEN_MAX_WIDTH = PANEL_WIDTH;
 
 class ArchiveRequestError extends Error {
   constructor(message, status = null) {
@@ -76,6 +72,8 @@ const episodeEnd = document.getElementById("episode-end");
 const episodeEndTitle = document.getElementById("episode-end-title");
 const episodeEndDetail = document.getElementById("episode-end-detail");
 const continueLink = document.getElementById("episode-end-continue");
+const prevEpisodeLink = document.getElementById("episode-end-prev");
+const nextEpisodeLink = document.getElementById("episode-end-next");
 const nextEpisodeTitle = document.getElementById("next-episode-title");
 const nextEpisodeIndicator = document.getElementById("next-episode");
 const nextEpisodeLabel = nextEpisodeIndicator.querySelector(
@@ -370,10 +368,14 @@ function resetPull() {
   setPullDistance(0, null);
 }
 
-function nextEpisodeUrl() {
+function episodeUrl(number) {
   const url = new URL(location.href);
-  url.searchParams.set("ep", String(nextEpisodeNumber));
+  url.searchParams.set("ep", String(number));
   return url;
+}
+
+function nextEpisodeUrl() {
+  return episodeUrl(nextEpisodeNumber);
 }
 
 function navigateToNextEpisode() {
@@ -527,7 +529,6 @@ function handleFullscreenTapEnd(event) {
   const startTime = tapStartTime;
   tapStartX = null;
 
-  if (window.innerWidth > SMALL_SCREEN_MAX_WIDTH) return;
   if (!isFullscreenSupported()) return;
 
   // A double-tap on a control (retry button, continue link, ...) should
@@ -596,15 +597,19 @@ function handleKeydown(event) {
   } else if (event.key === "ArrowLeft" && episodeNumber > 1) {
     event.preventDefault();
     isNavigating = true;
-    const url = new URL(location.href);
-    url.searchParams.set("ep", String(episodeNumber - 1));
-    location.assign(url);
+    location.assign(episodeUrl(episodeNumber - 1));
   }
 }
 
 function configureEpisodeEnd(manifest, metadata) {
   episodeEnd.hidden = false;
   continueLink.hidden = true;
+  nextEpisodeLink.hidden = true;
+
+  prevEpisodeLink.hidden = episodeNumber <= 1;
+  if (!prevEpisodeLink.hidden) {
+    prevEpisodeLink.href = episodeUrl(episodeNumber - 1);
+  }
 
   if (!manifest || !Array.isArray(manifest.episodes)) {
     episodeEndTitle.textContent = "Episode complete";
@@ -635,6 +640,8 @@ function configureEpisodeEnd(manifest, metadata) {
   nextEpisodeTitle.textContent = followingEpisode.title;
   continueLink.href = nextEpisodeUrl();
   continueLink.hidden = false;
+  nextEpisodeLink.href = nextEpisodeUrl();
+  nextEpisodeLink.hidden = false;
   nextEpisodeIndicator.hidden = false;
 }
 

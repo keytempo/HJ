@@ -10,7 +10,6 @@
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
-    scrollbar-color: #292929 #050505;
 }
 
 *,
@@ -342,14 +341,22 @@ button {
     line-height: 1.6;
 }
 
+.episode-end__nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    width: min(560px, 100%);
+    margin: 34px auto 0;
+}
+
 .episode-end__continue {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 24px;
-    width: min(520px, 100%);
-    margin: 34px auto 0;
-    padding: 17px 18px 17px 22px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding: 17px 22px;
     color: #f4f4f4;
     text-align: left;
     text-decoration: none;
@@ -360,6 +367,15 @@ button {
         background 180ms ease,
         border-color 180ms ease,
         transform 180ms ease;
+}
+
+/* Flex items default to a min-width equal to their content's un-wrapped
+   size, which would stop this span (and the nowrap title inside it) from
+   ever shrinking below the full title width. Overriding it to 0 is what
+   lets .episode-end__continue strong's ellipsis actually engage instead of
+   pushing the whole nav row wider than the viewport. */
+.episode-end__continue > span {
+    min-width: 0;
 }
 
 .episode-end__continue:hover {
@@ -397,8 +413,17 @@ button {
     width: 38px;
     height: 38px;
     color: #f5dce4;
+    text-decoration: none;
     background: #653044;
     border-radius: 12px;
+    transition:
+        background 180ms ease,
+        transform 180ms ease;
+}
+
+.episode-end__arrow:hover {
+    background: #7a3049;
+    transform: translateY(-2px);
 }
 
 .next-episode {
@@ -430,6 +455,7 @@ button {
 .next-episode[hidden],
 .episode-end[hidden],
 .episode-end__continue[hidden],
+.episode-end__arrow[hidden],
 .viewer-state__retry[hidden] {
     display: none;
 }

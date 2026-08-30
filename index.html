@@ -24,12 +24,21 @@
         <div class="ambient" id="ambient" aria-hidden="true"></div>
         <div class="ambient-vignette" aria-hidden="true"></div>
 
+        <!-- Silent by default: no visible heading or explanatory text while
+             the episode opens, only the thin loader below (see styles.css).
+             Title/detail stay in the DOM and screen-reader-reachable via
+             .visually-hidden the whole time; scripts.js only ever un-hides
+             them and gives them real content when there's an actual error
+             to report and a retry to offer. -->
         <div class="viewer-state" id="viewer-state" role="status">
             <div class="viewer-state__card">
-                <h1 id="viewer-state-title">Opening episode</h1>
-                <p class="viewer-state__detail" id="viewer-state-detail">
-                    Preparing the panels for you.
-                </p>
+                <h1 id="viewer-state-title" class="visually-hidden">
+                    Opening episode
+                </h1>
+                <p
+                    class="viewer-state__detail visually-hidden"
+                    id="viewer-state-detail"
+                ></p>
                 <div
                     class="viewer-state__loader"
                     id="viewer-state-loader"
@@ -59,7 +68,7 @@
             aria-labelledby="episode-end-title"
             hidden
         >
-            <p class="eyebrow">End of episode</p>
+            <p class="eyebrow" id="episode-end-eyebrow">End of episode</p>
             <h2 id="episode-end-title"></h2>
             <p class="episode-end__detail" id="episode-end-detail"></p>
             <div class="episode-end__nav">
@@ -72,6 +81,7 @@
                 ></a>
                 <a class="episode-end__continue" id="episode-end-continue" hidden>
                     <span>
+                        <small>Next episode</small>
                         <strong id="next-episode-title"></strong>
                     </span>
                 </a>

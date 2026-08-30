@@ -604,11 +604,13 @@ function handleKeydown(event) {
 function configureEpisodeEnd(manifest, metadata) {
   episodeEnd.hidden = false;
   continueLink.hidden = true;
-  nextEpisodeLink.hidden = true;
+  if (nextEpisodeLink) nextEpisodeLink.hidden = true;
 
-  prevEpisodeLink.hidden = episodeNumber <= 1;
-  if (!prevEpisodeLink.hidden) {
-    prevEpisodeLink.href = episodeUrl(episodeNumber - 1);
+  if (prevEpisodeLink) {
+    prevEpisodeLink.hidden = episodeNumber <= 1;
+    if (!prevEpisodeLink.hidden) {
+      prevEpisodeLink.href = episodeUrl(episodeNumber - 1);
+    }
   }
 
   if (!manifest || !Array.isArray(manifest.episodes)) {
@@ -640,8 +642,10 @@ function configureEpisodeEnd(manifest, metadata) {
   nextEpisodeTitle.textContent = followingEpisode.title;
   continueLink.href = nextEpisodeUrl();
   continueLink.hidden = false;
-  nextEpisodeLink.href = nextEpisodeUrl();
-  nextEpisodeLink.hidden = false;
+  if (nextEpisodeLink) {
+    nextEpisodeLink.href = nextEpisodeUrl();
+    nextEpisodeLink.hidden = false;
+  }
   nextEpisodeIndicator.hidden = false;
 }
 

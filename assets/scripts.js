@@ -69,6 +69,7 @@ const viewerStateTitle = document.getElementById("viewer-state-title");
 const viewerStateDetail = document.getElementById("viewer-state-detail");
 const viewerStateRetry = document.getElementById("viewer-state-retry");
 const episodeEnd = document.getElementById("episode-end");
+const episodeEndEyebrow = document.getElementById("episode-end-eyebrow");
 const episodeEndTitle = document.getElementById("episode-end-title");
 const episodeEndDetail = document.getElementById("episode-end-detail");
 const continueLink = document.getElementById("episode-end-continue");
@@ -95,6 +96,16 @@ let tapStartTime = 0;
 let lastTapTime = 0;
 let lastTapX = 0;
 let lastTapY = 0;
+// The two lookahead observers driving panel preloading (see setupPreloading
+// below). Held at module scope so a later episode-end glow rebuild, a
+// resize, etc. never need to touch them — they're created once per episode
+// load and simply left to run.
+let farObserver = null;
+let nearObserver = null;
+
+function panelImageUrl(panel) {
+  return `episodes/${episodeNumber}/${panel.file}`;
+}
 
 function updateScale() {
   if (reader.hidden) return;
@@ -109,6 +120,11 @@ function updateScale() {
   reader.style.height = "";
 }
 
+// setViewerState is now exclusively the error-reporting path — see
+// dismissViewerState below for the (silent, textless) happy path. Errors are
+// the one case in the initial-load flow where the person genuinely needs to
+// read something and possibly act on it (retry), so the full card treatment
+// (see styles.css .is-error) is reserved for this.
 function setViewerState(title, detail, { canRetry = false } = {}) {
   viewerState.hidden = false;
   viewerState.classList.remove("is-hidden");
@@ -116,6 +132,8 @@ function setViewerState(title, detail, { canRetry = false } = {}) {
   viewerState.setAttribute("role", canRetry ? "alert" : "status");
   viewerStateTitle.textContent = title;
   viewerStateDetail.textContent = detail;
+  viewerStateTitle.classList.remove("visually-hidden");
+  viewerStateDetail.classList.remove("visually-hidden");
   viewerStateRetry.hidden = !canRetry;
 }
 
@@ -234,7 +252,13 @@ function createPanelUnavailable(panel, panelIndex) {
   retry.type = "button";
   retry.textContent = "Retry panel";
   retry.addEventListener("click", () => {
+    // A retry is an explicit, immediate request — it bypasses the ahead-of-
+    // reader preload pipeline entirely and starts loading right away rather
+    // than waiting to be observed.
     const replacement = createPanelImage(panel, panelIndex);
+    replacement.fetchPriority = "high";
+    beginLoadingPanel(replacement);
+    replacement.decode?.().catch(() => undefined);
     placeholder.replaceWith(replacement);
     // A panel's own layout position changed, so the glow layout is rebuilt.
     // This is a one-off response to the click, not a scroll-driven update.
@@ -248,13 +272,37 @@ function createPanelUnavailable(panel, panelIndex) {
 
 function createPanelImage(panel, panelIndex) {
   const image = document.createElement("img");
-  image.src = `episodes/${episodeNumber}/${panel.file}`;
   image.width = panel.width;
   image.height = panel.height;
   image.alt = "";
-  image.loading = panelIndex === 0 ? "eager" : "lazy";
   image.decoding = "async";
-  if (panelIndex === 0) image.fetchPriority = "high";
+  image.draggable = false;
+  // Lets the browser skip layout/paint work for panels far outside the
+  // reading position (long episodes can have a great many of these) without
+  // any visible jump when they scroll into range — contain-intrinsic-size is
+  // set to the exact box this image renders at once loaded, the same
+  // formula used for the unavailable-panel placeholder above, so there is
+  // nothing for content-visibility to reconcile when it switches a panel
+  // back to normal rendering. Unsupported browsers simply ignore both
+  // properties and always render normally.
+  image.style.containIntrinsicSize = `${PANEL_WIDTH}px ${(panel.height / panel.width) * PANEL_WIDTH}px`;
+  // Referenced by the preloader (beginLoadingPanel/preparePanelForDisplay)
+  // and by the retry handler above — keeps every piece of code that needs
+  // this panel's file/dimensions working directly off the element itself
+  // instead of threading a second array around.
+  image._panel = panel;
+
+  // The very first panel is the only one that can't wait on any lookahead
+  // margin — it's what the person sees the instant the episode opens, so it
+  // loads immediately and at the browser's highest fetch priority. Every
+  // other panel is intentionally left without a src here; setupPreloading
+  // assigns it once this panel is far enough ahead of the reading position
+  // to be worth fetching (see below).
+  if (panelIndex === 0) {
+    image.fetchPriority = "high";
+    image.src = panelImageUrl(panel);
+  }
+
   image.addEventListener(
     "error",
     () => image.replaceWith(createPanelUnavailable(panel, panelIndex)),
@@ -265,11 +313,11 @@ function createPanelImage(panel, panelIndex) {
 
 function renderPanels(metadata) {
   const panels = document.createDocumentFragment();
-  let firstPanel = null;
+  const images = [];
 
   metadata.panels.forEach((panel, panelIndex) => {
     const image = createPanelImage(panel, panelIndex);
-    if (panelIndex === 0) firstPanel = image;
+    images.push(image);
     panels.append(image);
   });
 
@@ -280,7 +328,115 @@ function renderPanels(metadata) {
   );
   strip.setAttribute("role", "group");
   strip.replaceChildren(panels);
-  return firstPanel;
+  return images;
+}
+
+// ---------------------------------------------------------------------
+// Ahead-of-reader panel preloading.
+//
+// Native `loading="lazy"` on an <img> hands the browser a black box: it
+// decides how far ahead of the viewport to start fetching, and in practice
+// that's nowhere near far enough to make a panel feel "already there" by
+// the time normal reading reaches it. IntersectionObserver is the native
+// primitive for "tell me when this approaches the viewport" — using it
+// directly, with a lookahead margin this code controls, gets the actual
+// requirement (ready before reached) rather than the smaller guarantee
+// native lazy-loading offers (starts loading eventually).
+//
+// Two tiers, deliberately kept independent of each other:
+//   - far:  starts the network fetch early, well before the panel is
+//           actually needed. Bytes only — no decode is forced, since
+//           decoding a panel that's still many screens away would spend
+//           CPU/memory on something that isn't imminent.
+//   - near: forces a decode (cheap/instant if the far tier already fetched
+//           the bytes, since decode() just resolves against what's already
+//           in cache) shortly before the panel would actually be reached,
+//           so it's genuinely pixel-ready and not just downloaded.
+//
+// Both margins are expressed in viewport heights rather than a fixed pixel
+// or panel count, and the far margin narrows on constrained connections —
+// so the window adapts to the device/session instead of being an arbitrary
+// constant. Fast scrolling doesn't need separate handling: intersection
+// observers fire as soon as an element crosses the (generous) threshold
+// regardless of how quickly it got there, with no scroll listener or
+// per-frame polling involved.
+// ---------------------------------------------------------------------
+
+function preloadWindow() {
+  const viewportHeight = window.innerHeight || 800;
+  const connection = navigator.connection;
+  const isConstrained =
+    connection?.saveData ||
+    connection?.effectiveType === "slow-2g" ||
+    connection?.effectiveType === "2g";
+  return {
+    near: viewportHeight,
+    far: isConstrained ? viewportHeight * 1.5 : viewportHeight * 4,
+  };
+}
+
+function beginLoadingPanel(image) {
+  if (image.src) return; // already started (or is the eager first panel)
+  image.src = panelImageUrl(image._panel);
+}
+
+function preparePanelForDisplay(image) {
+  beginLoadingPanel(image);
+  image.decode?.().catch(() => undefined); // failures are handled by the element's own error listener
+}
+
+function teardownPreloading() {
+  farObserver?.disconnect();
+  nearObserver?.disconnect();
+  farObserver = null;
+  nearObserver = null;
+}
+
+function setupPreloading(images) {
+  teardownPreloading();
+
+  // No IntersectionObserver support: fall back to loading everything
+  // immediately rather than leaving every panel past the first permanently
+  // unloaded. Rare in practice, but correctness here matters more than the
+  // preload refinement above.
+  if (!("IntersectionObserver" in window)) {
+    images.forEach((image, index) => {
+      if (index === 0) return;
+      beginLoadingPanel(image);
+    });
+    return;
+  }
+
+  const { near, far } = preloadWindow();
+
+  farObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        beginLoadingPanel(entry.target);
+        farObserver.unobserve(entry.target);
+      });
+    },
+    { rootMargin: `0px 0px ${far}px 0px` },
+  );
+
+  nearObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.fetchPriority = "high";
+        preparePanelForDisplay(entry.target);
+        nearObserver.unobserve(entry.target);
+      });
+    },
+    { rootMargin: `0px 0px ${near}px 0px` },
+  );
+
+  images.forEach((image, index) => {
+    if (index === 0) return; // already loaded eagerly
+    farObserver.observe(image);
+    nearObserver.observe(image);
+  });
 }
 
 function ambientGlowSupported() {
@@ -293,10 +449,19 @@ function clearAmbientGlow() {
 }
 
 // Builds one glow layer per panel, each pinned at that panel's own document
-// offset. Positions are measured once here (and re-measured on resize,
-// since that's a real layout change) — never on scroll. Once placed, a
+// offset. Positions are measured once here (and re-measured on resize, and
+// once more after the episode-end section becomes visible — see below —
+// since both are real layout changes) — never on scroll. Once placed, a
 // glow element doesn't move relative to its panel again: both are ordinary
 // page content now, so the browser scrolls them together for free.
+//
+// The final panel's glow is a special case: it's stretched all the way down
+// to the true bottom of the document (not just its own panel + overlap), so
+// the atmosphere carries through the episode-end section instead of cutting
+// off partway through it. Calling this again once episode-end has its real,
+// final height (configureEpisodeEnd does so) is what makes that stretch
+// reach the actual end of the page rather than wherever the document
+// happened to end while episode-end was still hidden.
 function buildAmbientGlow() {
   clearAmbientGlow();
   if (!ambientGlowSupported()) return;
@@ -305,29 +470,43 @@ function buildAmbientGlow() {
   if (!images.length) return;
 
   const scrollY = window.scrollY;
+  const documentHeight = document.documentElement.scrollHeight;
   const layers = document.createDocumentFragment();
 
-  images.forEach((image) => {
+  images.forEach((image, index) => {
     const bounds = image.getBoundingClientRect();
     const top = bounds.top + scrollY - GLOW_OVERLAP;
-    const height = bounds.height + GLOW_OVERLAP * 2;
+    // The last glow's bottom edge is made to land exactly at documentHeight
+    // (rather than the usual +GLOW_OVERLAP past its own panel) specifically
+    // so it lines up with ambient's own height below with nothing left to
+    // clip — its mask (see .ambient__glow--tail in styles.css) finishes
+    // fading to transparent a little before that edge regardless.
+    const isLast = index === images.length - 1;
+    const height = isLast
+      ? documentHeight - top
+      : bounds.height + GLOW_OVERLAP * 2;
 
     const glow = document.createElement("img");
-    glow.className = "ambient__glow";
+    glow.className = isLast ? "ambient__glow ambient__glow--tail" : "ambient__glow";
     glow.alt = "";
     glow.loading = "lazy"; // defers the fetch/decode until it nears the viewport — native, no scroll listener involved
     glow.decoding = "async";
     glow.style.top = `${top}px`;
     glow.style.height = `${height}px`;
     glow.addEventListener("error", () => glow.remove(), { once: true });
-    glow.src = image.currentSrc || image.src;
+    // Deliberately panelImageUrl(image._panel) rather than image.currentSrc/
+    // image.src: panels beyond the first don't get their own src assigned
+    // until the preloader reaches them (see setupPreloading), but the glow
+    // is allowed to point at a panel's image before that panel's own <img>
+    // has started loading — its native loading="lazy" above defers the
+    // actual fetch until this layer nears the viewport regardless, the same
+    // deferral every glow layer has always relied on.
+    glow.src = panelImageUrl(image._panel);
     layers.append(glow);
   });
 
   ambient.append(layers);
-
-  const lastBounds = images[images.length - 1].getBoundingClientRect();
-  ambient.style.height = `${lastBounds.bottom + scrollY + GLOW_OVERLAP}px`;
+  ambient.style.height = `${documentHeight}px`;
 }
 
 function isAtBottom() {
@@ -604,6 +783,7 @@ function handleKeydown(event) {
 function configureEpisodeEnd(manifest, metadata) {
   episodeEnd.hidden = false;
   continueLink.hidden = true;
+  episodeEndEyebrow.hidden = false;
   if (nextEpisodeLink) nextEpisodeLink.hidden = true;
 
   if (prevEpisodeLink) {
@@ -637,6 +817,13 @@ function configureEpisodeEnd(manifest, metadata) {
   }
 
   nextEpisodeNumber = followingEpisode.episode;
+  // Both the eyebrow and the heading are dropped here, not just the
+  // heading: "You finished {title}" plus the continue card immediately
+  // below already say everything "End of episode" would have — keeping it
+  // too is exactly the redundant app-chatter the reader is meant to avoid.
+  // It stays for the two branches above, where it's the only thing marking
+  // that the episode has actually ended.
+  episodeEndEyebrow.hidden = true;
   episodeEndTitle.remove();
   episodeEndDetail.textContent = `You finished ${metadata.title}`;
   nextEpisodeTitle.textContent = followingEpisode.title;
@@ -704,13 +891,11 @@ function attachViewerEvents() {
 }
 
 async function initializeViewer() {
-  setViewerState(
-    isLatestRequested ? "Finding the latest episode" : "Opening episode",
-    isLatestRequested
-      ? "Checking the archive for the newest update."
-      : "Preparing the panels for you.",
-  );
-
+  // Deliberately no setViewerState() call here: the loading card's default
+  // (non-error) appearance is silent by design — see styles.css — so there
+  // is nothing to say yet. This covers both the plain-episode case and the
+  // ep=latest resolution step ahead of it; a person opening the reader
+  // doesn't need to be told which step it's on, only whether it succeeded.
   let manifest = null;
   if (isLatestRequested) {
     try {
@@ -731,7 +916,6 @@ async function initializeViewer() {
       showViewerError(latestError);
       return;
     }
-    setViewerState("Opening episode", "Preparing the panels for you.");
   }
 
   const manifestRequest = manifest
@@ -746,7 +930,8 @@ async function initializeViewer() {
     validateEpisodeMetadata(metadata);
     document.title = metadata.title;
 
-    const firstPanel = renderPanels(metadata);
+    const images = renderPanels(metadata);
+    const firstPanel = images[0] ?? null;
     reader.hidden = false;
     updateScale();
     buildAmbientGlow();
@@ -759,9 +944,18 @@ async function initializeViewer() {
       ]);
     }
     dismissViewerState();
+    // Only starts reaching ahead of the reader once the first panel is
+    // actually ready to show — starting any earlier would let panels 2+
+    // compete on the network with the one panel that genuinely can't wait.
+    setupPreloading(images);
 
     const resolvedManifest = await manifestRequest;
     configureEpisodeEnd(resolvedManifest, metadata);
+    // The episode-end section just went from hidden to its real, final
+    // height — rebuilding now is what lets the last panel's glow (see
+    // buildAmbientGlow) stretch all the way to the page's true bottom
+    // instead of wherever the document ended while episode-end was hidden.
+    buildAmbientGlow();
   } catch (error) {
     console.error(error);
     showViewerError(error);

@@ -114,6 +114,16 @@ button {
     backface-visibility: hidden;
 }
 
+/* The final panel's glow is stretched down through the episode-end section
+   (see buildAmbientGlow() in scripts.js) rather than stopping at its own
+   panel. Left at a flat opacity that far down would read as a wash rather
+   than a continuation of the panel above it, so it's faded out gradually
+   instead of just being cut off further down the page. */
+.ambient__glow--tail {
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 35%, transparent 92%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 35%, transparent 92%);
+}
+
 /* Below this width .reader is full-bleed (width: min(800px, 100%) collapses
    to 100%), so panels cover the glow edge-to-edge and none of it is ever
    visible. Skip painting it — buildAmbientGlow() already skips building it
@@ -160,6 +170,19 @@ button {
 .strip img {
     height: auto;
     background: #0a0a0a;
+    /* This is a dedicated reading surface, not ordinary page content —
+       panels shouldn't drag-ghost or pop up a text-selection/callout menu
+       the way a generic webpage image would. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+    /* Lets the browser skip layout/paint for panels well outside the
+       reading position — see createPanelImage() in scripts.js, which sets
+       contain-intrinsic-size per panel to its exact rendered box so nothing
+       shifts when a panel re-enters normal rendering. Unsupported browsers
+       ignore this and always render normally. */
+    content-visibility: auto;
 }
 
 .panel-unavailable {
@@ -239,9 +262,26 @@ button {
     border-radius: 24px;
     box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
     backdrop-filter: blur(18px);
+    transition:
+        background 200ms ease,
+        border-color 200ms ease,
+        box-shadow 200ms ease;
 }
 
-
+/* Default (non-error) loading state: no card, no heading, no explanatory
+   sentence — just the thin loader below, quietly sitting on the plain
+   background. The full glassy card treatment is reserved for the one
+   moment there's actually something to read and possibly act on: an error
+   with a retry button. Title/detail stay in the DOM and reachable by
+   assistive tech the whole time (see .visually-hidden on those elements in
+   index.html) — this only removes the *visual* chrome for the quiet case. */
+.viewer-state:not(.is-error) .viewer-state__card {
+    padding: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+}
 
 .viewer-state h1,
 .noscript-state h1 {
@@ -268,6 +308,10 @@ button {
     overflow: hidden;
     background: #242424;
     border-radius: 999px;
+}
+
+.viewer-state:not(.is-error) .viewer-state__loader {
+    margin-top: 0;
 }
 
 .viewer-state__loader span {
@@ -320,10 +364,15 @@ button {
     margin-inline: auto;
     padding: clamp(54px, 10vw, 80px) clamp(24px, 7vw, 56px);
     text-align: center;
+    /* No hard seam against the strip above: a soft fade from the same black
+       the reader/panels sit on, so the transition into this section reads
+       as a continuation of the same surface rather than a website footer
+       starting underneath it. Where the ambient glow reaches this far
+       (viewport > 800px — see .ambient__glow--tail above), its blurred
+       color shows through this background rather than fighting it. */
     background:
-        radial-gradient(circle at 50% 0, rgb(113 51 72 / 14%), transparent 48%),
-        #080808;
-    border-top: 1px solid rgb(255 255 255 / 7%);
+        radial-gradient(circle at 50% 0, rgb(113 51 72 / 12%), transparent 55%),
+        linear-gradient(to bottom, #000 0, #0a0a0a 140px);
 }
 
 .episode-end h2 {
@@ -356,17 +405,19 @@ button {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
-    padding: 17px 22px;
+    padding: 10px 6px;
     color: #f4f4f4;
     text-align: left;
     text-decoration: none;
-    background: rgb(255 255 255 / 5%);
-    border: 1px solid rgb(255 255 255 / 10%);
-    border-radius: 18px;
+    border-bottom: 1px solid transparent;
     transition:
-        background 180ms ease,
-        border-color 180ms ease,
-        transform 180ms ease;
+        border-color 220ms ease,
+        transform 220ms ease;
+}
+
+.episode-end__continue:hover {
+    border-bottom-color: rgb(207 130 156 / 50%);
+    transform: translateY(-1px);
 }
 
 /* Flex items default to a min-width equal to their content's un-wrapped
@@ -378,30 +429,25 @@ button {
     min-width: 0;
 }
 
-.episode-end__continue:hover {
-    background: rgb(255 255 255 / 8%);
-    border-color: rgb(255 255 255 / 16%);
-    transform: translateY(-2px);
-}
-
 .episode-end__continue small,
 .episode-end__continue strong {
     display: block;
 }
 
 .episode-end__continue small {
-    margin-bottom: 4px;
-    color: #888;
+    margin-bottom: 5px;
+    color: #8d8d8d;
     font-size: 11px;
     font-weight: 650;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
 }
 
 .episode-end__continue strong {
     overflow: hidden;
-    font-size: 15px;
-    font-weight: 560;
+    font-size: 18px;
+    font-weight: 580;
+    letter-spacing: -0.01em;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -410,19 +456,22 @@ button {
     display: grid;
     flex: 0 0 auto;
     place-items: center;
-    width: 38px;
-    height: 38px;
-    color: #f5dce4;
+    width: 42px;
+    height: 42px;
+    color: #cfa3b2;
     text-decoration: none;
-    background: #653044;
-    border-radius: 12px;
+    background: transparent;
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 999px;
     transition:
-        background 180ms ease,
+        border-color 180ms ease,
+        color 180ms ease,
         transform 180ms ease;
 }
 
 .episode-end__arrow:hover {
-    background: #7a3049;
+    color: #f5dce4;
+    border-color: rgb(207 130 156 / 50%);
     transform: translateY(-2px);
 }
 

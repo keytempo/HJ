@@ -1,5 +1,5 @@
 {
-  "totalEpisodes": 131,
+  "totalEpisodes": 132,
   "episodes": [
     {
       "episode": 1,
@@ -654,6 +654,11 @@
     {
       "episode": 131,
       "title": "(S2) Ep. 130 - Heart over Head",
+      "panelCount": 113
+    },
+    {
+      "episode": 132,
+      "title": "(S2) Ep. 131 - Beach Episode",
       "panelCount": 113
     }
   ]

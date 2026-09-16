@@ -1,0 +1,531 @@
+/*
+  Episode Archive stylesheet.
+
+  This is a companion sheet to assets/styles.css, not a replacement — the
+  reader's base (color-scheme, body reset, .eyebrow, focus rings, tap
+  highlight removal) is loaded first and reused here. Everything below is
+  specific to the archive/browse page: the hero, the search+filter bar, the
+  season sections, and the episode cards.
+*/
+
+/* --wine, --rose, --hairline, --text-dim, --font-display, --radius-* etc.
+   now live in assets/styles.css, which this page also loads, so the reader
+   and the archive share one token set instead of two copies that could
+   drift apart. Only this page's own extra token stays here. */
+:root {
+  --ink-raised: #0d0d0d;
+}
+
+body.archive {
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Static atmospheric wash behind the hero. Unlike the reader's .ambient
+   layer, nothing here is measured from image positions — it's a fixed,
+   purely decorative gradient, so it costs nothing and needs no JS. */
+.archive-ambient {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  background:
+    radial-gradient(
+      640px 420px at 50% -8%,
+      rgb(122 48 73 / 32%),
+      transparent 62%
+    ),
+    radial-gradient(
+      900px 520px at 88% 4%,
+      rgb(189 109 136 / 9%),
+      transparent 65%
+    );
+  pointer-events: none;
+}
+
+.hero,
+.archive-main,
+.archive-footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  width: min(720px, 100%);
+  margin-inline: auto;
+  padding: clamp(64px, 13vw, 108px) 24px clamp(40px, 8vw, 56px);
+  text-align: center;
+}
+
+.hero > * {
+  opacity: 0;
+  animation: hero-in 640ms cubic-bezier(0.16, 0.8, 0.24, 1) forwards;
+  transform: translateY(14px);
+}
+
+.hero__kicker {
+  animation-delay: 20ms;
+}
+
+.hero__title {
+  margin: 0;
+  color: #f8f4f5;
+  font-family: var(--font-display);
+  font-size: clamp(42px, 9vw, 78px);
+  font-weight: 600;
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  animation-delay: 100ms;
+}
+
+.hero__lede {
+  max-width: 46ch;
+  margin: 18px auto 0;
+  color: var(--text-dim);
+  font-size: 15.5px;
+  line-height: 1.65;
+  animation-delay: 200ms;
+}
+
+.hero__stats {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(28px, 6vw, 52px);
+  margin: 38px 0 0;
+  animation-delay: 300ms;
+}
+
+.hero__stat {
+  margin: 0;
+}
+
+.hero__stat dt {
+  order: 2;
+  margin-top: 4px;
+  color: var(--text-dimmer);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.hero__stat dd {
+  order: 1;
+  margin: 0;
+  color: #f2f2f2;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 4vw, 30px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero__stat dd.is-loading {
+  color: var(--text-dimmer);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 40px;
+  animation-delay: 380ms;
+}
+
+/* .btn / .btn--primary / .btn--ghost now live in assets/styles.css (the
+   shared file) since assets/scripts.js's panel-retry button and this
+   page's own buttons all use them — see that file. */
+
+@keyframes hero-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Controls bar ---------- */
+
+.archive-main {
+  width: min(1120px, 100%);
+  margin-inline: auto;
+  padding: 0 20px 100px;
+}
+
+.controls {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -20px 34px;
+  padding: 14px 20px;
+  background: rgb(5 5 5 / 86%);
+  border-bottom: 1px solid var(--hairline);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: opacity 200ms ease;
+}
+
+.controls[data-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.search {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 16px;
+  color: var(--text-dim);
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  transition: border-color 160ms ease;
+}
+
+.search:focus-within {
+  border-color: rgb(207 130 156 / 50%);
+}
+
+.search i {
+  flex: 0 0 auto;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #f4f4f4;
+  font: inherit;
+  font-size: 14px;
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.search input::placeholder {
+  color: var(--text-dimmer);
+}
+
+.filters {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.filter-btn {
+  padding: 9px 15px;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.filter-btn:hover {
+  border-color: var(--hairline-strong);
+}
+
+.filter-btn.is-active {
+  color: #f5dce4;
+  background: var(--wine);
+  border-color: transparent;
+}
+
+.sort-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 9px 15px;
+  color: #ccc;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 150ms ease;
+}
+
+.sort-btn:hover {
+  border-color: var(--hairline-strong);
+}
+
+.sort-btn i {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ---------- Results ---------- */
+
+.results-count {
+  margin: 0 0 18px;
+  color: var(--text-dimmer);
+  font-size: 13px;
+}
+
+.season-group {
+  margin-bottom: 52px;
+}
+
+.season-group__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.season-group__header h2 {
+  margin: 0;
+  color: #f2f2f2;
+  font-family: var(--font-display);
+  font-size: clamp(21px, 3vw, 27px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.season-group__count {
+  flex: 0 0 auto;
+  color: var(--text-dimmer);
+  font-size: 12.5px;
+}
+
+.archive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 18px;
+}
+
+/* ---------- Episode card ---------- */
+
+.ep-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.ep-card:hover,
+.ep-card:focus-visible {
+  transform: translateY(-4px);
+  border-color: rgb(207 130 156 / 45%);
+  box-shadow:
+    0 18px 40px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(207 130 156 / 12%);
+}
+
+.ep-card__thumb {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: var(--ink-raised);
+}
+
+.ep-card__thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  transition: transform 280ms ease;
+}
+
+.ep-card:hover .ep-card__thumb img,
+.ep-card:focus-visible .ep-card__thumb img {
+  transform: scale(1.045);
+}
+
+.ep-card__badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  color: #f5dce4;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: rgb(101 48 68 / 88%);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.ep-card__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 15px 16px;
+}
+
+.ep-card__title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #f2f2f2;
+  font-size: 14.5px;
+  font-weight: 560;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ep-card__meta {
+  margin-top: auto;
+  color: var(--text-dimmer);
+  font-size: 12px;
+}
+
+/* Skeleton placeholders shown while the manifest is loading */
+
+.ep-card.is-skeleton {
+  pointer-events: none;
+}
+
+.ep-card.is-skeleton .ep-card__thumb,
+.ep-card.is-skeleton .skeleton-line {
+  background: linear-gradient(
+    100deg,
+    rgb(255 255 255 / 4%) 30%,
+    rgb(255 255 255 / 9%) 50%,
+    rgb(255 255 255 / 4%) 70%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 5px;
+}
+
+.skeleton-line + .skeleton-line {
+  width: 60%;
+}
+
+@keyframes skeleton-sweep {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
+}
+
+/* ---------- Empty / error states ---------- */
+
+/* Chrome, heading, and detail text for these cards are the shared
+   "glass card" component defined in assets/styles.css (identical to the
+   reader's own error card). All that's left here is placement within this
+   page's normal scrolling flow, and the gap above each card's button —
+   the reader gets the equivalent via its own .viewer-state__retry rule. */
+.archive-empty,
+.archive-error__card {
+  margin: 40px auto;
+}
+
+.archive-empty .btn,
+.archive-error__card .btn {
+  margin-top: 28px;
+}
+
+/* ---------- Footer ---------- */
+
+.archive-footer {
+  padding: 0 20px 64px;
+  color: var(--text-dimmer);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.archive-footer a {
+  color: var(--text-dim);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 640px) {
+  .controls {
+    position: static;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .filters {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sort-btn {
+    margin-left: 0;
+  }
+
+  .archive-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .ep-card__title {
+    font-size: 13.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .ep-card,
+  .ep-card__thumb img,
+  .filter-btn,
+  .sort-btn,
+  .search {
+    transition: none;
+  }
+
+  .ep-card:hover {
+    transform: none;
+  }
+
+  .ep-card.is-skeleton .ep-card__thumb,
+  .ep-card.is-skeleton .skeleton-line {
+    animation: none;
+    background: rgb(255 255 255 / 6%);
+  }
+}

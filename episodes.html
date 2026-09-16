@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <meta name="theme-color" content="#050505" />
+        <title>Episode Archive — Hand Jumper</title>
+        <meta
+            name="description"
+            content="Every Hand Jumper episode in one place — search, filter by season, and jump straight into the archive."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Poppins:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <!-- Reader base styles, reused here for the dark theme, .eyebrow,
+             focus rings and tap-highlight reset — then the archive-specific
+             layer on top. -->
+        <link rel="stylesheet" href="assets/styles.css" />
+        <link rel="stylesheet" href="assets/directory.css" />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.3.1/css/all.min.css"
+        />
+    </head>
+    <body class="archive">
+        <div class="archive-ambient" aria-hidden="true"></div>
+
+        <header class="hero">
+            <p class="hero__kicker eyebrow">Episode Archive</p>
+            <h1 class="hero__title">Hand Jumper</h1>
+            <p class="hero__lede">
+                Every episode currently in the archive, pulled live from the
+                index — search by title, filter by season, or just start from
+                the beginning.
+            </p>
+            <dl class="hero__stats">
+                <div class="hero__stat">
+                    <dt>Episodes</dt>
+                    <dd class="is-loading" data-stat="episodes">—</dd>
+                </div>
+                <div class="hero__stat">
+                    <dt>Panels</dt>
+                    <dd class="is-loading" data-stat="panels">—</dd>
+                </div>
+                <div class="hero__stat">
+                    <dt>Seasons</dt>
+                    <dd class="is-loading" data-stat="seasons">—</dd>
+                </div>
+            </dl>
+            <div class="hero__actions">
+                <a class="btn btn--primary" href="index.html?ep=1">
+                    <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                    Start from Episode 1
+                </a>
+                <a class="btn btn--ghost" href="index.html?ep=latest">
+                    Jump to latest
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+            </div>
+        </header>
+
+        <main class="archive-main">
+            <div class="controls" id="controls" data-disabled="true">
+                <label class="search">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input
+                        type="search"
+                        id="search-input"
+                        placeholder="Search episodes…"
+                        aria-label="Search episodes"
+                        autocomplete="off"
+                        disabled
+                    />
+                </label>
+                <div class="filters" role="group" aria-label="Filter by season">
+                    <button
+                        type="button"
+                        class="filter-btn is-active"
+                        data-season="all"
+                        aria-pressed="true"
+                        disabled
+                    >
+                        All
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-btn"
+                        data-season="s1"
+                        aria-pressed="false"
+                        disabled
+                    >
+                        Season One
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-btn"
+                        data-season="s2"
+                        aria-pressed="false"
+                        disabled
+                    >
+                        Season Two
+                    </button>
+                    <button
+                        type="button"
+                        class="filter-btn"
+                        data-season="special"
+                        aria-pressed="false"
+                        disabled
+                    >
+                        Specials
+                    </button>
+                </div>
+                <button
+                    type="button"
+                    class="sort-btn"
+                    id="sort-toggle"
+                    aria-pressed="false"
+                    disabled
+                >
+                    <i
+                        class="fa-solid fa-arrow-down-short-wide"
+                        id="sort-icon"
+                        aria-hidden="true"
+                    ></i>
+                    <span id="sort-label">Reading order</span>
+                </button>
+            </div>
+
+            <p class="results-count" id="results-count" hidden></p>
+
+            <div id="archive-content"></div>
+
+            <noscript>
+                <div class="archive-empty">
+                    <strong>JavaScript is required to browse the archive</strong>
+                    <p>
+                        Enable JavaScript to search and filter episodes. The
+                        buttons above still work without it.
+                    </p>
+                </div>
+            </noscript>
+        </main>
+
+        <footer class="archive-footer">
+            <p>Hand Jumper — archive loaded live from the episode index.</p>
+        </footer>
+
+        <script src="assets/directory.js" defer></script>
+    </body>
+</html>

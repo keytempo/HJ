@@ -647,7 +647,7 @@ function configureEpisodeEnd(manifest, metadata) {
   }
 
   nextEpisodeNumber = followingEpisode.episode;
-  episodeEndTitle.remove();
+  episodeEndTitle.textContent = "Episode complete";
   episodeEndDetail.textContent = `You finished ${metadata.title}`;
   nextEpisodeTitle.textContent = followingEpisode.title;
   continueLink.href = nextEpisodeUrl();

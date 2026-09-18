@@ -389,9 +389,8 @@ button:focus-visible {
     padding: clamp(54px, 10vw, 80px) clamp(24px, 7vw, 56px);
     text-align: center;
     background:
-        radial-gradient(circle at 50% 0, rgb(113 51 72 / 14%), transparent 48%),
+        radial-gradient(circle at 50% 0%, rgb(122 48 73 / 22%), transparent 60%),
         #080808;
-    border-top: 1px solid rgb(255 255 255 / 7%);
 }
 
 .episode-end h2 {
@@ -404,7 +403,7 @@ button:focus-visible {
 }
 
 .episode-end__detail {
-    margin: 12px 0 0;
+    margin: 14px 0 0;
     color: var(--text-dim);
     font-size: 15px;
     line-height: 1.6;
@@ -416,7 +415,7 @@ button:focus-visible {
     justify-content: center;
     gap: 14px;
     width: min(560px, 100%);
-    margin: 34px auto 0;
+    margin: 40px auto 0;
 }
 
 .episode-end__continue {
@@ -486,18 +485,19 @@ button:focus-visible {
     display: grid;
     flex: 0 0 auto;
     place-items: center;
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     color: #f5dce4;
     text-decoration: none;
     background: var(--wine);
-    border-radius: var(--radius-sm);
+    border-radius: 999px;
     transition:
         background 180ms ease,
         transform 180ms ease;
 }
 
-.episode-end__arrow:hover {
+.episode-end__arrow:hover,
+.episode-end__arrow:focus-visible {
     background: var(--wine-bright);
     transform: translateY(-2px);
 }

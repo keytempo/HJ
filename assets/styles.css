@@ -391,6 +391,7 @@ button:focus-visible {
     background:
         radial-gradient(circle at 50% 0%, rgb(122 48 73 / 22%), transparent 60%),
         #080808;
+    border-top: 1px solid rgb(255 255 255 / 7%);
 }
 
 .episode-end h2 {
@@ -404,7 +405,7 @@ button:focus-visible {
 
 .episode-end__detail {
     margin: 14px 0 0;
-    color: var(--text-dim);
+    color: #a8a8a8;
     font-size: 15px;
     line-height: 1.6;
 }
@@ -426,7 +427,7 @@ button:focus-visible {
     overflow: hidden;
     padding: 17px 22px;
     color: #f4f4f4;
-    text-align: left;
+    text-align: center;
     text-decoration: none;
     background: rgb(255 255 255 / 5%);
     border: 1px solid rgb(255 255 255 / 10%);
@@ -443,6 +444,7 @@ button:focus-visible {
    lets .episode-end__continue strong's ellipsis actually engage instead of
    pushing the whole nav row wider than the viewport. */
 .episode-end__continue > span {
+    flex: 1 1 auto;
     min-width: 0;
 }
 

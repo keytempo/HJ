@@ -7,13 +7,6 @@ const PANEL_WIDTH = 800;
 const PULL_THRESHOLD = 120;
 const WHEEL_ARM_DELAY = 240;
 const WHEEL_FINISH_DELAY = 180;
-// .reader is full-bleed at and below this width (see styles.css), so the
-// ambient glow would be entirely hidden behind the panels — skip building
-// it at all below this width rather than pay for work no one can see.
-const GLOW_MIN_VIEWPORT = PANEL_WIDTH;
-// px of soft overlap between one panel's glow and the next, so consecutive
-// glows blend into each other instead of showing a hard seam.
-const GLOW_OVERLAP = 120;
 // Touch-only gesture (bound to touchstart/touchend below, not click/dblclick):
 // two quick taps toggles fullscreen, on any touch device regardless of
 // viewport size. These bound what counts as a single "tap" (quick, roughly
@@ -64,7 +57,6 @@ let episodeNumber =
 const reader = document.querySelector(".reader");
 const strip = document.getElementById("strip");
 const episodeTitle = document.getElementById("episode-title");
-const ambient = document.getElementById("ambient");
 const viewerState = document.getElementById("viewer-state");
 const viewerStateTitle = document.getElementById("viewer-state-title");
 const viewerStateDetail = document.getElementById("viewer-state-detail");
@@ -138,7 +130,6 @@ function dismissViewerState() {
 function showViewerError(error) {
   reader.hidden = true;
   episodeEnd.hidden = true;
-  clearAmbientGlow();
 
   if (!navigator.onLine) {
     setViewerState(
@@ -244,11 +235,9 @@ function createPanelUnavailable(panel, panelIndex) {
   retry.className = "btn btn--ghost";
   retry.textContent = "Retry panel";
   retry.addEventListener("click", () => {
-    const replacement = createPanelImage(panel, panelIndex);
-    placeholder.replaceWith(replacement);
-    // A panel's own layout position changed, so the glow layout is rebuilt.
-    // This is a one-off response to the click, not a scroll-driven update.
-    buildAmbientGlow();
+    const replacement = createPanel(panel, panelIndex);
+    const host = placeholder.closest(".panel") ?? placeholder;
+    host.replaceWith(replacement);
   });
 
   content.append(title, detail, retry);
@@ -256,8 +245,23 @@ function createPanelUnavailable(panel, panelIndex) {
   return placeholder;
 }
 
-function createPanelImage(panel, panelIndex) {
+// Each panel is a full-bleed section: a CSS-blurred ambient layer sits
+// behind the sharp comic panel. No getBoundingClientRect, no stored
+// offsets, no rebuild on resize — the glow is just layout.
+function createPanel(panel, panelIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "panel";
+
+  const glow = document.createElement("img");
+  glow.className = "panel__glow";
+  glow.alt = "";
+  glow.loading = "lazy";
+  glow.decoding = "async";
+  glow.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
+  glow.addEventListener("error", () => glow.remove(), { once: true });
+
   const image = document.createElement("img");
+  image.className = "panel__image";
   image.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
   image.width = panel.width;
   image.height = panel.height;
@@ -267,20 +271,28 @@ function createPanelImage(panel, panelIndex) {
   if (panelIndex === 0) image.fetchPriority = "high";
   image.addEventListener(
     "error",
-    () => image.replaceWith(createPanelUnavailable(panel, panelIndex)),
+    () => {
+      const unavailable = createPanelUnavailable(panel, panelIndex);
+      image.replaceWith(unavailable);
+      glow.remove();
+    },
     { once: true },
   );
-  return image;
+
+  wrapper.append(glow, image);
+  return wrapper;
 }
 
 function renderPanels(metadata) {
   const panels = document.createDocumentFragment();
-  let firstPanel = null;
+  let firstImage = null;
 
   metadata.panels.forEach((panel, panelIndex) => {
-    const image = createPanelImage(panel, panelIndex);
-    if (panelIndex === 0) firstPanel = image;
-    panels.append(image);
+    const node = createPanel(panel, panelIndex);
+    if (panelIndex === 0) {
+      firstImage = node.querySelector(".panel__image");
+    }
+    panels.append(node);
   });
 
   episodeTitle.textContent = metadata.title;
@@ -290,54 +302,7 @@ function renderPanels(metadata) {
   );
   strip.setAttribute("role", "group");
   strip.replaceChildren(panels);
-  return firstPanel;
-}
-
-function ambientGlowSupported() {
-  return window.innerWidth > GLOW_MIN_VIEWPORT;
-}
-
-function clearAmbientGlow() {
-  ambient.replaceChildren();
-  ambient.style.height = "";
-}
-
-// Builds one glow layer per panel, each pinned at that panel's own document
-// offset. Positions are measured once here (and re-measured on resize,
-// since that's a real layout change) — never on scroll. Once placed, a
-// glow element doesn't move relative to its panel again: both are ordinary
-// page content now, so the browser scrolls them together for free.
-function buildAmbientGlow() {
-  clearAmbientGlow();
-  if (!ambientGlowSupported()) return;
-
-  const images = [...strip.querySelectorAll("img")];
-  if (!images.length) return;
-
-  const scrollY = window.scrollY;
-  const layers = document.createDocumentFragment();
-
-  images.forEach((image) => {
-    const bounds = image.getBoundingClientRect();
-    const top = bounds.top + scrollY - GLOW_OVERLAP;
-    const height = bounds.height + GLOW_OVERLAP * 2;
-
-    const glow = document.createElement("img");
-    glow.className = "ambient__glow";
-    glow.alt = "";
-    glow.loading = "lazy"; // defers the fetch/decode until it nears the viewport — native, no scroll listener involved
-    glow.decoding = "async";
-    glow.style.top = `${top}px`;
-    glow.style.height = `${height}px`;
-    glow.addEventListener("error", () => glow.remove(), { once: true });
-    glow.src = image.currentSrc || image.src;
-    layers.append(glow);
-  });
-
-  ambient.append(layers);
-
-  const lastBounds = images[images.length - 1].getBoundingClientRect();
-  ambient.style.height = `${lastBounds.bottom + scrollY + GLOW_OVERLAP}px`;
+  return firstImage;
 }
 
 function isAtBottom() {
@@ -589,7 +554,6 @@ function handleResize() {
   window.cancelAnimationFrame(resizeFrame);
   resizeFrame = window.requestAnimationFrame(() => {
     updateScale();
-    buildAmbientGlow();
   });
 }
 
@@ -759,7 +723,6 @@ async function initializeViewer() {
     const firstPanel = renderPanels(metadata);
     reader.hidden = false;
     updateScale();
-    buildAmbientGlow();
     attachViewerEvents();
 
     if (firstPanel) {

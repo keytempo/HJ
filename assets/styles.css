@@ -214,7 +214,7 @@ button:focus-visible {
     object-fit: cover;
     object-position: center;
     filter: blur(48px) saturate(1.18);
-    opacity: 0.6;
+    opacity: 0.42;
     transform: translateX(-50%) scale(1.46);
     pointer-events: none;
     backface-visibility: hidden;

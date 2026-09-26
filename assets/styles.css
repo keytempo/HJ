@@ -1,5 +1,8 @@
 :root {
     --panel-width: 800px;
+    /* Soft vertical bleed so consecutive panel glows blend instead of
+       hard-seaming at the panel edge. */
+    --glow-overlap: 120px;
     color-scheme: dark;
     background: #050505;
     font-family:
@@ -139,29 +142,8 @@ button:focus-visible {
     outline-offset: 3px;
 }
 
-/* Glow layer: lives in normal document flow (position: absolute against the
-   unpositioned <body>, which anchors it to the top of the page and lets it
-   span the full document height). It scrolls with the page exactly like any
-   other content — there is no scroll listener driving it. Each panel gets
-   its own <img class="ambient__glow"> positioned once at that panel's
-   document offset (see buildAmbientGlow() in scripts.js) and never moves
-   again after that, so the glow stays fixed relative to its own panel. */
-.ambient {
-    position: absolute;
-    z-index: 0;
-    top: 0;
-    left: 0;
-    width: 100%;
-    overflow: hidden;
-    background: #050505;
-    contain: strict;
-    isolation: isolate;
-    pointer-events: none;
-}
-
-/* Dark vignette: unlike the glow, this is genuinely viewport chrome (a
-   constant contrast wash), so it stays position: fixed and is a separate
-   layer from .ambient rather than a pseudo-element scoped to it. */
+/* Dark vignette: viewport chrome (constant contrast wash). Fixed, separate
+   from the per-panel ambient glows which live in normal flow. */
 .ambient-vignette {
     position: fixed;
     z-index: 0;
@@ -172,64 +154,79 @@ button:focus-visible {
     pointer-events: none;
 }
 
-.ambient__glow {
-    position: absolute;
-    left: 50%;
-    width: min(720px, 90vw);
-    object-fit: cover;
-    object-position: center;
-    filter: blur(48px) saturate(1.18);
-    opacity: 0.9;
-    transform: translateX(-50%) scale(1.46);
-    backface-visibility: hidden;
-}
-
-/* Below this width .reader is full-bleed (width: min(800px, 100%) collapses
-   to 100%), so panels cover the glow edge-to-edge and none of it is ever
-   visible. Skip painting it — buildAmbientGlow() already skips building it
-   at this width, this is just a hard guarantee against any stray paint. */
-@media (max-width: 800px) {
-    .ambient,
-    .ambient-vignette {
-        display: none;
-    }
-}
-
 .reader {
     position: relative;
     z-index: 1;
-    width: min(800px, 100%);
+    width: 100%;
     margin-inline: auto;
-    overflow: hidden;
-    background: #000;
+    /* Glow layers intentionally overflow the column; do not clip. */
+    overflow: visible;
+    background: transparent;
 }
 
 .reader[hidden] {
     display: none;
 }
 
-/* Every panel is force-displayed at the shared 800px column width
-   regardless of its own native resolution (height: auto below preserves
-   that panel's own aspect ratio). Only the strip itself is scaled as one
-   unit, preserving exact pixel adjacency between panels either way. */
+/* Strip is the 800px content column. Zoom scales the whole unit so
+   adjacent panels stay pixel-snapped. Glows break out of this width via
+   absolute positioning relative to each .panel. Background keeps the
+   column opaque while sides show the ambient wash. */
 .strip {
     width: var(--panel-width);
-    /* Scaled via CSS zoom in updateScale() — zoom participates in layout so
-       the browser pixel-snaps in the zoomed coordinate system, eliminating
-       subpixel seams between panels (unlike transform: scale which composites
-       out-of-flow). line-height: 0 removes inline whitespace nodes. */
+    margin-inline: auto;
     line-height: 0;
+    background: #000;
 }
 
-.strip img,
-.panel-unavailable {
+/* Full-bleed panel: the sharp image stays in the column; the glow is a
+   separate layer centered on the same vertical band and allowed to spill
+   past the reader edges. No JS measurement — position is pure layout. */
+.panel {
+    position: relative;
     display: block;
     width: var(--panel-width);
 }
 
-.strip img {
+.panel__image,
+.panel-unavailable {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: var(--panel-width);
+}
+
+.panel__image {
     height: auto;
     background: #0a0a0a;
+}
+
+/* Ambient glow: same source image, blurred + saturated + scaled, centered
+   on the panel and extended vertically by --glow-overlap so neighboring
+   panels blend. Lives behind the sharp image (z-index 0). */
+.panel__glow {
+    position: absolute;
+    z-index: 0;
+    top: calc(-1 * var(--glow-overlap));
+    left: 50%;
+    width: min(720px, 90vw);
+    height: calc(100% + 2 * var(--glow-overlap));
+    object-fit: cover;
+    object-position: center;
+    filter: blur(48px) saturate(1.18);
+    opacity: 0.6;
+    transform: translateX(-50%) scale(1.46);
+    pointer-events: none;
+    backface-visibility: hidden;
+}
+
+/* Below the column width the panels are full-bleed, so side glow is never
+   visible. Drop it entirely rather than paint work no one can see. */
+@media (max-width: 800px) {
+    .panel__glow,
+    .ambient-vignette {
+        display: none;
+    }
 }
 
 .panel-unavailable {

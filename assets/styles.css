@@ -214,10 +214,16 @@ button:focus-visible {
     object-fit: cover;
     object-position: center;
     filter: blur(48px) saturate(1.18);
-    opacity: 0.42;
+    /* Hidden until decoded — avoids one frame of the unfiltered, scaled-up
+       panel flashing at the sides before blur is applied. */
+    opacity: 0;
     transform: translateX(-50%) scale(1.46);
     pointer-events: none;
     backface-visibility: hidden;
+}
+
+.panel__glow.is-ready {
+    opacity: 0.42;
 }
 
 /* Below the column width the panels are full-bleed, so side glow is never

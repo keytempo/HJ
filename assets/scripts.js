@@ -258,6 +258,11 @@ function createPanel(panel, panelIndex) {
   glow.loading = "lazy";
   glow.decoding = "async";
   glow.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
+  glow.addEventListener(
+    "load",
+    () => glow.classList.add("is-ready"),
+    { once: true },
+  );
   glow.addEventListener("error", () => glow.remove(), { once: true });
 
   const image = document.createElement("img");

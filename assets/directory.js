@@ -264,8 +264,9 @@ function renderGrouped(list) {
     { key: "s1", label: "Season One" },
     { key: "s2", label: "Season Two" },
   ];
+  const orderedGroups = sortDescending ? [...groups].reverse() : groups;
 
-  groups.forEach(({ key, label }) => {
+  orderedGroups.forEach(({ key, label }) => {
     const inGroup = list.filter((episode) => seasonKey(episode.title) === key);
     if (!inGroup.length) return;
 

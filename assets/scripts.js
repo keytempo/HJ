@@ -258,9 +258,18 @@ function createPanel(panel, panelIndex) {
   glow.loading = "lazy";
   glow.decoding = "async";
   glow.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
+  // Wait for decode + one frame so the blur filter is composited
+  // before we reveal the glow (avoids unfiltered flash / artifacts).
   glow.addEventListener(
     "load",
-    () => glow.classList.add("is-ready"),
+    () => {
+      glow
+        .decode()
+        .catch(() => undefined)
+        .then(() => {
+          requestAnimationFrame(() => glow.classList.add("is-ready"));
+        });
+    },
     { once: true },
   );
   glow.addEventListener("error", () => glow.remove(), { once: true });

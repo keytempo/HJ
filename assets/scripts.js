@@ -248,31 +248,29 @@ function createPanelUnavailable(panel, panelIndex) {
 // Each panel is a full-bleed section: a CSS-blurred ambient layer sits
 // behind the sharp comic panel. No getBoundingClientRect, no stored
 // offsets, no rebuild on resize — the glow is just layout.
-function createPanel(panel, panelIndex) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "panel";
-
+//
+// The glow is only created once the sharp image has loaded, and reuses its
+// already-loaded URL. That keeps it to a single network fetch per panel and
+// means the glow can never load on a different schedule than its panel.
+function attachGlow(wrapper, image) {
   const glow = document.createElement("img");
   glow.className = "panel__glow";
   glow.alt = "";
-  glow.loading = "lazy";
   glow.decoding = "async";
-  glow.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
+  glow.src = image.currentSrc || image.src;
+  wrapper.prepend(glow);
+
   // Wait for decode + one frame so the blur filter is composited
   // before we reveal the glow (avoids unfiltered flash / artifacts).
-  glow.addEventListener(
-    "load",
-    () => {
-      glow
-        .decode()
-        .catch(() => undefined)
-        .then(() => {
-          requestAnimationFrame(() => glow.classList.add("is-ready"));
-        });
-    },
-    { once: true },
+  glow.decode().then(
+    () => requestAnimationFrame(() => glow.classList.add("is-ready")),
+    () => glow.remove(),
   );
-  glow.addEventListener("error", () => glow.remove(), { once: true });
+}
+
+function createPanel(panel, panelIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "panel";
 
   const image = document.createElement("img");
   image.className = "panel__image";
@@ -283,17 +281,19 @@ function createPanel(panel, panelIndex) {
   image.loading = panelIndex === 0 ? "eager" : "lazy";
   image.decoding = "async";
   if (panelIndex === 0) image.fetchPriority = "high";
+  image.addEventListener("load", () => attachGlow(wrapper, image), {
+    once: true,
+  });
   image.addEventListener(
     "error",
     () => {
       const unavailable = createPanelUnavailable(panel, panelIndex);
       image.replaceWith(unavailable);
-      glow.remove();
     },
     { once: true },
   );
 
-  wrapper.append(glow, image);
+  wrapper.append(image);
   return wrapper;
 }
 

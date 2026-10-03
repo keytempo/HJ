@@ -198,12 +198,21 @@ button:focus-visible {
     background: #0a0a0a;
 }
 
-/* Ambient glow: the same image, blurred and saturated, occupying exactly the
-   panel's own box so its content lines up with the sharp panel beside it.
-   Only the width is stretched (scaleX) to fill the side gutters — the
-   vertical extent is never enlarged, so neighbouring glows meet at the
-   seam (their blur fall-offs are complementary) instead of stacking into a
-   bright band. Lives behind the sharp image (z-index 0). */
+/* Ambient glow: the same image, blurred and saturated, behind the sharp
+   panel. Its box is exactly the panel's own box (so content lines up with the
+   sharp panel beside it), widened with scaleX to fill the side gutters.
+   Lives behind the sharp image (z-index 0).
+
+   Seams: blur fades a layer out toward its box edge, and two abutting
+   layers' fades are exact complements (they sum to 1 at every point). With
+   normal blending the layers composite "over" each other, which does not
+   preserve that sum — it leaves a dark line at each seam, and any attempt to
+   overlap the boxes to compensate produces a bright band instead. Additive
+   blending (plus-lighter) adds the layers' premultiplied colour instead, so
+   the complementary fades sum back to exactly one layer — no tuned
+   constants, independent of blur radius, opacity, display scaling and panel
+   heights. Browsers without plus-lighter fall back to normal blending
+   (a faint seam line, nothing worse). */
 .panel__glow {
     position: absolute;
     z-index: 0;
@@ -213,6 +222,7 @@ button:focus-visible {
     height: 100%;
     object-fit: fill;
     filter: blur(48px) saturate(1.18);
+    mix-blend-mode: plus-lighter;
     /* Hidden until decoded and composited (see attachGlow in scripts.js) —
        avoids one frame of the unfiltered, scaled-up panel flashing at the
        sides before blur is applied. */
@@ -223,7 +233,7 @@ button:focus-visible {
 }
 
 .panel__glow.is-ready {
-    opacity: 0.42;
+    opacity: 0.5;
 }
 
 /* Below the column width the panels are full-bleed, so side glow is never

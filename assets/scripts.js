@@ -72,14 +72,20 @@ const nextEpisodeIndicator = document.getElementById("next-episode");
 const nextEpisodeLabel = nextEpisodeIndicator.querySelector(
   ".next-episode__label",
 );
+const prevEpisodeIndicator = document.getElementById("prev-episode");
+const prevEpisodeLabel = prevEpisodeIndicator
+  ? prevEpisodeIndicator.querySelector(".prev-episode__label")
+  : null;
 
+let prevEpisodeNumber = episodeNumber > 1 ? episodeNumber - 1 : null;
 let nextEpisodeNumber = null;
 let pullDistance = 0;
 let pullInput = null;
+let pullDirection = null;
 let touchY = null;
 let wheelArmTimer = null;
 let wheelFinishTimer = null;
-let isWheelPullArmed = false;
+let armedWheelDirection = null;
 let isNavigating = false;
 let resizeFrame = null;
 let tapStartX = null;
@@ -319,6 +325,10 @@ function renderPanels(metadata) {
   return firstImage;
 }
 
+function isAtTop() {
+  return window.scrollY <= 2;
+}
+
 function isAtBottom() {
   return (
     window.scrollY + window.innerHeight >=
@@ -326,35 +336,81 @@ function isAtBottom() {
   );
 }
 
-function setPullLabel(label) {
-  if (nextEpisodeLabel.textContent !== label) {
+function setNextPullLabel(label) {
+  if (nextEpisodeLabel && nextEpisodeLabel.textContent !== label) {
     nextEpisodeLabel.textContent = label;
   }
 }
 
-function setPullDistance(distance, input) {
+function setPrevPullLabel(label) {
+  if (prevEpisodeLabel && prevEpisodeLabel.textContent !== label) {
+    prevEpisodeLabel.textContent = label;
+  }
+}
+
+function setPullDistance(distance, input, direction) {
   pullDistance = Math.max(0, Math.min(distance, PULL_THRESHOLD));
   pullInput = pullDistance > 0 ? input : null;
+  pullDirection = pullDistance > 0 ? direction : null;
   const progress = pullDistance / PULL_THRESHOLD;
 
-  nextEpisodeIndicator.style.setProperty("--pull-progress", progress);
-  nextEpisodeIndicator.classList.toggle("is-ready", progress === 1);
+  const indicator =
+    direction === "prev" ? prevEpisodeIndicator : nextEpisodeIndicator;
+  const otherIndicator =
+    direction === "prev" ? nextEpisodeIndicator : prevEpisodeIndicator;
 
-  if (progress === 1) {
-    setPullLabel(
-      input === "touch" ? "Release for next episode" : "Next episode ready",
-    );
-  } else {
-    setPullLabel(
-      input === "wheel"
-        ? "Keep scrolling for next episode"
-        : "Pull for next episode",
-    );
+  if (otherIndicator) {
+    otherIndicator.style.setProperty("--pull-progress", 0);
+    otherIndicator.classList.remove("is-ready");
+  }
+
+  if (!indicator) return;
+
+  indicator.style.setProperty("--pull-progress", progress);
+  indicator.classList.toggle("is-ready", progress === 1);
+
+  if (direction === "prev") {
+    if (progress === 1) {
+      setPrevPullLabel(
+        input === "touch"
+          ? "Release for previous episode"
+          : "Previous episode ready",
+      );
+    } else {
+      setPrevPullLabel(
+        input === "wheel"
+          ? "Keep scrolling for previous episode"
+          : "Pull for previous episode",
+      );
+    }
+  } else if (direction === "next") {
+    if (progress === 1) {
+      setNextPullLabel(
+        input === "touch" ? "Release for next episode" : "Next episode ready",
+      );
+    } else {
+      setNextPullLabel(
+        input === "wheel"
+          ? "Keep scrolling for next episode"
+          : "Pull for next episode",
+      );
+    }
   }
 }
 
 function resetPull() {
-  setPullDistance(0, null);
+  armedWheelDirection = null;
+  pullDistance = 0;
+  pullInput = null;
+  pullDirection = null;
+  if (nextEpisodeIndicator) {
+    nextEpisodeIndicator.style.setProperty("--pull-progress", 0);
+    nextEpisodeIndicator.classList.remove("is-ready");
+  }
+  if (prevEpisodeIndicator) {
+    prevEpisodeIndicator.style.setProperty("--pull-progress", 0);
+    prevEpisodeIndicator.classList.remove("is-ready");
+  }
 }
 
 function episodeUrl(number) {
@@ -367,18 +423,40 @@ function nextEpisodeUrl() {
   return episodeUrl(nextEpisodeNumber);
 }
 
+function prevEpisodeUrl() {
+  return episodeUrl(prevEpisodeNumber);
+}
+
 function navigateToNextEpisode() {
   if (isNavigating || nextEpisodeNumber === null) return;
 
   isNavigating = true;
-  nextEpisodeIndicator.classList.add("is-loading");
-  setPullLabel("Loading next episode…");
+  if (nextEpisodeIndicator) {
+    nextEpisodeIndicator.classList.add("is-loading");
+    setNextPullLabel("Loading next episode…");
+  }
   window.setTimeout(() => location.assign(nextEpisodeUrl()), 120);
 }
 
+function navigateToPrevEpisode() {
+  if (isNavigating || prevEpisodeNumber === null) return;
+
+  isNavigating = true;
+  if (prevEpisodeIndicator) {
+    prevEpisodeIndicator.classList.add("is-loading");
+    setPrevPullLabel("Loading previous episode…");
+  }
+  window.setTimeout(() => location.assign(prevEpisodeUrl()), 120);
+}
+
 function finishPull() {
-  if (pullDistance >= PULL_THRESHOLD) navigateToNextEpisode();
-  else resetPull();
+  if (pullDistance >= PULL_THRESHOLD) {
+    if (pullDirection === "prev") navigateToPrevEpisode();
+    else if (pullDirection === "next") navigateToNextEpisode();
+    else resetPull();
+  } else {
+    resetPull();
+  }
 }
 
 function normalizeWheelDelta(event) {
@@ -388,27 +466,77 @@ function normalizeWheelDelta(event) {
 }
 
 function handleWheel(event) {
-  if (nextEpisodeNumber === null || isNavigating) return;
+  if (isNavigating) return;
 
-  if (!isAtBottom() || event.deltaY <= 0) {
-    isWheelPullArmed = false;
-    window.clearTimeout(wheelArmTimer);
-    resetPull();
+  if (event.deltaY > 0) {
+    if (armedWheelDirection === "prev" || pullDirection === "prev") {
+      window.clearTimeout(wheelArmTimer);
+      resetPull();
+    }
+
+    if (nextEpisodeNumber === null || !isAtBottom()) {
+      if (armedWheelDirection === "next" || pullDirection === "next") {
+        window.clearTimeout(wheelArmTimer);
+        resetPull();
+      }
+      return;
+    }
+
+    if (armedWheelDirection !== "next") {
+      window.clearTimeout(wheelArmTimer);
+      wheelArmTimer = window.setTimeout(() => {
+        if (isAtBottom()) {
+          armedWheelDirection = "next";
+        }
+      }, WHEEL_ARM_DELAY);
+      return;
+    }
+
+    event.preventDefault();
+    setPullDistance(
+      pullDistance + normalizeWheelDelta(event) * 0.35,
+      "wheel",
+      "next",
+    );
+    window.clearTimeout(wheelFinishTimer);
+    wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
     return;
   }
 
-  if (!isWheelPullArmed) {
-    window.clearTimeout(wheelArmTimer);
-    wheelArmTimer = window.setTimeout(() => {
-      isWheelPullArmed = isAtBottom();
-    }, WHEEL_ARM_DELAY);
+  if (event.deltaY < 0) {
+    if (armedWheelDirection === "next" || pullDirection === "next") {
+      window.clearTimeout(wheelArmTimer);
+      resetPull();
+    }
+
+    if (prevEpisodeNumber === null || !isAtTop()) {
+      if (armedWheelDirection === "prev" || pullDirection === "prev") {
+        window.clearTimeout(wheelArmTimer);
+        resetPull();
+      }
+      return;
+    }
+
+    if (armedWheelDirection !== "prev") {
+      window.clearTimeout(wheelArmTimer);
+      wheelArmTimer = window.setTimeout(() => {
+        if (isAtTop()) {
+          armedWheelDirection = "prev";
+        }
+      }, WHEEL_ARM_DELAY);
+      return;
+    }
+
+    event.preventDefault();
+    setPullDistance(
+      pullDistance + Math.abs(normalizeWheelDelta(event)) * 0.35,
+      "wheel",
+      "prev",
+    );
+    window.clearTimeout(wheelFinishTimer);
+    wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
     return;
   }
-
-  event.preventDefault();
-  setPullDistance(pullDistance + normalizeWheelDelta(event) * 0.35, "wheel");
-  window.clearTimeout(wheelFinishTimer);
-  wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
 }
 
 function handleTouchStart(event) {
@@ -425,7 +553,6 @@ function handleTouchMove(event) {
   if (
     touchY === null ||
     event.touches.length !== 1 ||
-    nextEpisodeNumber === null ||
     isNavigating
   ) {
     return;
@@ -435,12 +562,33 @@ function handleTouchMove(event) {
   const delta = touchY - currentY;
   touchY = currentY;
 
-  if (isAtBottom() && delta > 0) {
+  if (pullDirection === "next") {
     event.preventDefault();
-    setPullDistance(pullDistance + delta * 0.55, "touch");
-  } else if (pullDistance > 0) {
+    const newDistance = pullDistance + delta * (delta > 0 ? 0.55 : 1);
+    if (newDistance <= 0) resetPull();
+    else setPullDistance(newDistance, "touch", "next");
+    return;
+  }
+
+  if (pullDirection === "prev") {
     event.preventDefault();
-    setPullDistance(pullDistance + delta, "touch");
+    const pullDelta = -delta;
+    const newDistance = pullDistance + pullDelta * (pullDelta > 0 ? 0.55 : 1);
+    if (newDistance <= 0) resetPull();
+    else setPullDistance(newDistance, "touch", "prev");
+    return;
+  }
+
+  if (isAtBottom() && delta > 0 && nextEpisodeNumber !== null) {
+    event.preventDefault();
+    setPullDistance(delta * 0.55, "touch", "next");
+    return;
+  }
+
+  if (isAtTop() && delta < 0 && prevEpisodeNumber !== null) {
+    event.preventDefault();
+    setPullDistance(-delta * 0.55, "touch", "prev");
+    return;
   }
 }
 
@@ -557,8 +705,10 @@ function handleFullscreenTapEnd(event) {
 }
 
 function handleScroll() {
-  if (!isAtBottom()) {
-    isWheelPullArmed = false;
+  if (armedWheelDirection === "next" && !isAtBottom()) {
+    window.clearTimeout(wheelArmTimer);
+    resetPull();
+  } else if (armedWheelDirection === "prev" && !isAtTop()) {
     window.clearTimeout(wheelArmTimer);
     resetPull();
   }
@@ -582,10 +732,9 @@ function handleKeydown(event) {
   if (event.key === "ArrowRight" && nextEpisodeNumber !== null) {
     event.preventDefault();
     navigateToNextEpisode();
-  } else if (event.key === "ArrowLeft" && episodeNumber > 1) {
+  } else if (event.key === "ArrowLeft" && prevEpisodeNumber !== null) {
     event.preventDefault();
-    isNavigating = true;
-    location.assign(episodeUrl(episodeNumber - 1));
+    navigateToPrevEpisode();
   }
 }
 
@@ -594,22 +743,49 @@ function configureEpisodeEnd(manifest, metadata) {
   continueLink.hidden = true;
   if (nextEpisodeLink) nextEpisodeLink.hidden = true;
 
-  if (prevEpisodeLink) {
-    prevEpisodeLink.hidden = episodeNumber <= 1;
-    if (!prevEpisodeLink.hidden) {
-      prevEpisodeLink.href = episodeUrl(episodeNumber - 1);
-    }
-  }
-
   if (!manifest || !Array.isArray(manifest.episodes)) {
     episodeEndTitle.textContent = "Episode complete";
     episodeEndDetail.textContent = "You've reached the end of this episode.";
+    if (prevEpisodeLink) {
+      prevEpisodeLink.hidden = prevEpisodeNumber === null;
+      if (!prevEpisodeLink.hidden) {
+        prevEpisodeLink.href = prevEpisodeUrl();
+      }
+    }
+    if (prevEpisodeIndicator) {
+      prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
+    }
     return;
   }
 
   const currentEpisodeIndex = manifest.episodes.findIndex(
     (episode) => episode.episode === episodeNumber,
   );
+  const precedingEpisode =
+    currentEpisodeIndex > 0 ? manifest.episodes[currentEpisodeIndex - 1] : null;
+  const hasPrecedingEpisode =
+    precedingEpisode &&
+    Number.isInteger(precedingEpisode.episode) &&
+    typeof precedingEpisode.title === "string" &&
+    precedingEpisode.title.trim();
+
+  if (hasPrecedingEpisode) {
+    prevEpisodeNumber = precedingEpisode.episode;
+  } else if (currentEpisodeIndex === 0) {
+    prevEpisodeNumber = null;
+  }
+
+  if (prevEpisodeLink) {
+    prevEpisodeLink.hidden = prevEpisodeNumber === null;
+    if (!prevEpisodeLink.hidden) {
+      prevEpisodeLink.href = prevEpisodeUrl();
+    }
+  }
+
+  if (prevEpisodeIndicator) {
+    prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
+  }
+
   const followingEpisode = manifest.episodes[currentEpisodeIndex + 1];
   const hasFollowingEpisode =
     followingEpisode &&
@@ -710,6 +886,7 @@ async function initializeViewer() {
         );
       }
       episodeNumber = latestEpisode;
+      prevEpisodeNumber = episodeNumber > 1 ? episodeNumber - 1 : null;
     } catch (error) {
       const latestError = new LatestEpisodeUnavailableError(
         "Could not resolve the latest episode",
@@ -738,6 +915,9 @@ async function initializeViewer() {
     reader.hidden = false;
     updateScale();
     attachViewerEvents();
+    if (prevEpisodeIndicator) {
+      prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
+    }
 
     if (firstPanel) {
       await Promise.race([

@@ -517,12 +517,12 @@ button:focus-visible {
     transform: translateY(-2px);
 }
 
+.prev-episode,
 .next-episode {
     --pull-progress: 0;
     position: fixed;
     z-index: 20;
     right: 50%;
-    bottom: calc(16px + env(safe-area-inset-bottom));
     width: min(280px, calc(100% - 32px));
     padding: 12px 16px;
     overflow: hidden;
@@ -536,13 +536,23 @@ button:focus-visible {
     border-radius: 999px;
     box-shadow: 0 12px 34px rgb(0 0 0 / 36%);
     opacity: var(--pull-progress);
-    transform: translate(50%, calc(24px * (1 - var(--pull-progress))));
     transition:
         opacity 120ms ease-out,
         transform 120ms ease-out;
     pointer-events: none;
 }
 
+.prev-episode {
+    top: calc(16px + env(safe-area-inset-top));
+    transform: translate(50%, calc(-24px * (1 - var(--pull-progress))));
+}
+
+.next-episode {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    transform: translate(50%, calc(24px * (1 - var(--pull-progress))));
+}
+
+.prev-episode[hidden],
 .next-episode[hidden],
 .episode-end[hidden],
 .episode-end__continue[hidden],
@@ -551,11 +561,13 @@ button:focus-visible {
     display: none;
 }
 
+.prev-episode__label,
 .next-episode__label {
     position: relative;
     z-index: 1;
 }
 
+.prev-episode__progress,
 .next-episode__progress {
     position: absolute;
     inset: 0;
@@ -564,12 +576,14 @@ button:focus-visible {
     transform-origin: left;
 }
 
+.prev-episode.is-ready,
 .next-episode.is-ready {
     color: #fff;
     background: rgb(42 26 32 / 96%);
     border-color: rgb(207 130 156 / 28%);
 }
 
+.prev-episode.is-loading,
 .next-episode.is-loading {
     --pull-progress: 1;
 }
@@ -608,6 +622,7 @@ button:focus-visible {
     .viewer-state,
     .btn,
     .episode-end__continue,
+    .prev-episode,
     .next-episode {
         transition: none;
     }

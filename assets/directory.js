@@ -1,7 +1,7 @@
 // Episode Archive script.
 //
 // This mirrors the data contract used by scripts.js (same BASE_URL, same
-// map/manifest.json shape: { totalEpisodes, episodes: [{ episode, title,
+// archive/episodes.json shape: { totalEpisodes, episodes: [{ episode, title,
 // panelCount }] }) but only ever reads the manifest — it never opens an
 // individual episode's panel map, so there's no reader state here at all.
 // Reading order always means ascending by `episode`, and every link out to
@@ -9,7 +9,7 @@
 // in the title, which drifts from `episode` after the Special episode).
 
 const BASE_URL = "https://raw.githubusercontent.com/keytempo/handjumper/main/";
-const MANIFEST_PATH = "map/manifest.json";
+const MANIFEST_PATH = "archive/episodes.json";
 const SKELETON_COUNT = 10;
 
 const controls = document.getElementById("controls");
@@ -39,7 +39,7 @@ function isSpecial(title) {
 }
 
 function thumbUrl(episodeNumber) {
-  return `${BASE_URL}episodes/${episodeNumber}/001.webp`;
+  return `${BASE_URL}archive/episodes/${episodeNumber}/001.webp`;
 }
 
 function readerUrl(episodeNumber) {

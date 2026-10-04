@@ -11,6 +11,8 @@
 const BASE_URL = "https://raw.githubusercontent.com/keytempo/handjumper/main/";
 const MANIFEST_PATH = "archive/episodes.json";
 const SKELETON_COUNT = 10;
+// localStorage key holding the starred episode numbers (a JSON array).
+const STARRED_KEY = "hj:starred";
 
 const controls = document.getElementById("controls");
 const searchInput = document.getElementById("search-input");
@@ -29,6 +31,28 @@ let currentFilter = "all";
 let currentQuery = "";
 let sortDescending = false;
 let searchDebounce = null;
+let starred = loadStarred();
+
+function loadStarred() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STARRED_KEY));
+    return new Set(Array.isArray(stored) ? stored.filter(Number.isInteger) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleStar(episodeNumber) {
+  // Re-read first: another tab may have changed the list since this page
+  // loaded, and writing back a stale copy would silently undo its stars.
+  starred = loadStarred();
+  if (!starred.delete(episodeNumber)) starred.add(episodeNumber);
+  try {
+    localStorage.setItem(STARRED_KEY, JSON.stringify([...starred]));
+  } catch {
+    // Storage blocked or full — the star still shows for this visit.
+  }
+}
 
 function seasonKey(title) {
   return /^\(S2\)/.test(title) ? "s2" : "s1";
@@ -162,6 +186,42 @@ function renderErrorState(title, detail) {
   content.append(card);
 }
 
+// A sibling of the card's <a>, not a child: a button can't nest inside a link.
+function buildStarButton(episode) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ep-star";
+  button.setAttribute("aria-label", `Star ${episode.title}`);
+
+  const icon = document.createElement("i");
+  icon.setAttribute("aria-hidden", "true");
+  button.append(icon);
+
+  const sync = () => {
+    const on = starred.has(episode.episode);
+    button.setAttribute("aria-pressed", String(on));
+    icon.className = on ? "fa-solid fa-star" : "fa-regular fa-star";
+  };
+  button.addEventListener("click", () => {
+    toggleStar(episode.episode);
+    if (currentFilter !== "starred") {
+      sync();
+      return;
+    }
+    // In the Starred view an un-starred episode no longer belongs: redraw,
+    // then hand focus to the card that took its place so keyboard users
+    // don't lose their spot when the button disappears.
+    const index = [...content.querySelectorAll(".ep-star")].indexOf(button);
+    renderResults();
+    const remaining = content.querySelectorAll(".ep-star");
+    remaining[Math.min(index, remaining.length - 1)]?.focus({
+      preventScroll: true,
+    });
+  });
+  sync();
+  return button;
+}
+
 function buildCard(episode) {
   const card = document.createElement("a");
   card.className = "ep-card";
@@ -205,7 +265,11 @@ function buildCard(episode) {
 
   body.append(title, meta);
   card.append(thumb, body);
-  return card;
+
+  const item = document.createElement("div");
+  item.className = "ep-item";
+  item.append(card, buildStarButton(episode));
+  return item;
 }
 
 function sortList(list) {
@@ -217,6 +281,7 @@ function matchesFilter(episode) {
   if (currentFilter === "s1") return seasonKey(episode.title) === "s1";
   if (currentFilter === "s2") return seasonKey(episode.title) === "s2";
   if (currentFilter === "special") return isSpecial(episode.title);
+  if (currentFilter === "starred") return starred.has(episode.episode);
   return true;
 }
 
@@ -233,19 +298,29 @@ function renderEmptyState() {
   const empty = document.createElement("div");
   empty.className = "archive-empty";
 
+  const query = currentQuery.trim();
+  // Starred with nothing starred isn't a failed search — say how to star.
+  const noStars =
+    currentFilter === "starred" &&
+    !query &&
+    !episodes.some((episode) => starred.has(episode.episode));
+
   const heading = document.createElement("strong");
-  heading.textContent = "No episodes match";
+  heading.textContent = noStars ? "No starred episodes yet" : "No episodes match";
 
   const detail = document.createElement("p");
-  const query = currentQuery.trim();
-  detail.textContent = query
-    ? `Nothing in the archive matches "${query}".`
-    : "Nothing in the archive matches this filter yet.";
+  if (noStars) {
+    detail.textContent = "Tap the star on any episode to save it here.";
+  } else if (query) {
+    detail.textContent = `Nothing in the archive matches "${query}".`;
+  } else {
+    detail.textContent = "Nothing in the archive matches this filter yet.";
+  }
 
   const clear = document.createElement("button");
   clear.type = "button";
   clear.className = "btn btn--ghost";
-  clear.textContent = "Clear search and filters";
+  clear.textContent = noStars ? "Browse all episodes" : "Clear search and filters";
   clear.addEventListener("click", () => {
     currentQuery = "";
     searchInput.value = "";
@@ -393,6 +468,13 @@ async function init() {
     );
   }
 }
+
+// Stars changed in another tab: pick them up without a reload.
+window.addEventListener("storage", (event) => {
+  if (event.key !== null && event.key !== STARRED_KEY) return;
+  starred = loadStarred();
+  renderResults();
+});
 
 attachControlEvents();
 init();

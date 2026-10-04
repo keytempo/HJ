@@ -14,6 +14,10 @@ const WHEEL_FINISH_DELAY = 180;
 // a double-tap rather than two unrelated taps.
 const DOUBLE_TAP_MAX_INTERVAL = 300; // ms
 const DOUBLE_TAP_MAX_DISTANCE = 24; // px
+// Reading progress (see saveProgress): the localStorage key, and how long
+// scrolling must pause before the position is written.
+const PROGRESS_KEY = "hj:progress";
+const PROGRESS_SAVE_DELAY = 300; // ms
 
 class ArchiveRequestError extends Error {
   constructor(message, status = null) {
@@ -94,6 +98,8 @@ let tapStartTime = 0;
 let lastTapTime = 0;
 let lastTapX = 0;
 let lastTapY = 0;
+let progressSaveTimer = null;
+let progressDirty = false;
 
 function updateScale() {
   if (reader.hidden) return;
@@ -704,7 +710,62 @@ function handleFullscreenTapEnd(event) {
   lastTapY = startY;
 }
 
+// Reading progress, saved per episode in localStorage as a 0-1 fraction of the
+// strip's height (viewport top relative to the strip), so it survives a
+// different window width. 1 means finished: reopening a finished episode
+// starts at the top, same as an unread one.
+function readProgressMap() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PROGRESS_KEY));
+    return stored && typeof stored === "object" && !Array.isArray(stored)
+      ? stored
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function currentProgress() {
+  const rect = reader.getBoundingClientRect();
+  if (rect.bottom <= window.innerHeight + 2) return 1; // end of strip in view
+  return Math.min(Math.max(-rect.top / rect.height, 0), 1);
+}
+
+function saveProgress() {
+  window.clearTimeout(progressSaveTimer);
+  // Only after the person has actually scrolled, so merely opening an
+  // episode never overwrites what was saved.
+  if (!progressDirty || reader.hidden) return;
+  progressDirty = false;
+
+  // Round before testing, so a nudge too small to matter is treated as
+  // "at the top" (entry removed) instead of storing a 0.
+  const progress = Math.round(currentProgress() * 1000) / 1000;
+  const map = readProgressMap();
+  if (progress > 0) map[episodeNumber] = progress;
+  else delete map[episodeNumber];
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(map));
+  } catch {
+    // Storage blocked or full — reading still works, progress just isn't kept.
+  }
+}
+
+function queueProgressSave() {
+  progressDirty = true;
+  window.clearTimeout(progressSaveTimer);
+  progressSaveTimer = window.setTimeout(saveProgress, PROGRESS_SAVE_DELAY);
+}
+
+function restoreProgress() {
+  const progress = Number(readProgressMap()[episodeNumber]);
+  if (!(progress > 0 && progress < 1)) return; // unread, finished, or junk
+  const rect = reader.getBoundingClientRect();
+  window.scrollTo(0, window.scrollY + rect.top + progress * rect.height);
+}
+
 function handleScroll() {
+  queueProgressSave();
   if (armedWheelDirection === "next" && !isAtBottom()) {
     window.clearTimeout(wheelArmTimer);
     resetPull();
@@ -865,6 +926,10 @@ function attachViewerEvents() {
     passive: true,
   });
   window.addEventListener("keydown", handleKeydown);
+  window.addEventListener("pagehide", saveProgress);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveProgress();
+  });
 }
 
 async function initializeViewer() {
@@ -914,6 +979,7 @@ async function initializeViewer() {
     const firstPanel = renderPanels(metadata);
     reader.hidden = false;
     updateScale();
+    restoreProgress();
     attachViewerEvents();
     if (prevEpisodeIndicator) {
       prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
@@ -936,4 +1002,7 @@ async function initializeViewer() {
 }
 
 viewerStateRetry.addEventListener("click", () => location.reload());
+// Position is restored per episode above; keep the browser's own scroll
+// restoration (reload, back/forward) from fighting it.
+if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 initializeViewer();

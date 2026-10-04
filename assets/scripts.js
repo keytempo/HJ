@@ -274,7 +274,7 @@ function createPanel(panel, panelIndex) {
 
   const image = document.createElement("img");
   image.className = "panel__image";
-  image.src = `${BASE_URL}episodes/${episodeNumber}/${panel.file}`;
+  image.src = `${BASE_URL}archive/episodes/${episodeNumber}/${panel.file}`;
   image.width = panel.width;
   image.height = panel.height;
   image.alt = "";
@@ -663,7 +663,7 @@ async function fetchMapFile(mapPath) {
 
 function resolveLatestEpisodeNumber(manifest) {
   // archive.py writes totalEpisodes as the authoritative episode count/number
-  // in map/manifest.json — trust it directly instead of re-deriving it.
+  // in archive/episodes.json — trust it directly instead of re-deriving it.
   if (
     !manifest ||
     !Number.isInteger(manifest.totalEpisodes) ||
@@ -702,7 +702,7 @@ async function initializeViewer() {
   let manifest = null;
   if (isLatestRequested) {
     try {
-      manifest = await fetchMapFile("map/manifest.json");
+      manifest = await fetchMapFile("archive/episodes.json");
       const latestEpisode = resolveLatestEpisodeNumber(manifest);
       if (latestEpisode === null) {
         throw new LatestEpisodeUnavailableError(
@@ -724,13 +724,13 @@ async function initializeViewer() {
 
   const manifestRequest = manifest
     ? Promise.resolve(manifest)
-    : fetchMapFile("map/manifest.json").catch((error) => {
+    : fetchMapFile("archive/episodes.json").catch((error) => {
         console.warn("Episode navigation is unavailable:", error);
         return null;
       });
 
   try {
-    const metadata = await fetchMapFile(`map/${episodeNumber}.json`);
+    const metadata = await fetchMapFile(`archive/maps/${episodeNumber}.json`);
     validateEpisodeMetadata(metadata);
     document.title = metadata.title;
 

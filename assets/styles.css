@@ -1,201 +1,206 @@
 :root {
-    --panel-width: 800px;
-    color-scheme: dark;
-    background: #050505;
-    font-family:
-        Poppins,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        sans-serif;
+  /* Width of the comic column. scripts.js reads it to scale the column down on
+     narrower screens. A media query can't read a custom property, so the
+     breakpoint on .panel__glow below repeats this number. */
+  --panel-width: 800px;
+  color-scheme: dark;
+  background: #050505;
+  font-family:
+    Poppins,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 
-    /* Shared brand tokens. assets/directory.css (the episode archive page)
-       reads these too, so the reader and the archive stay one visual
-       identity instead of two coincidentally-similar stylesheets. */
-    --wine: #653044;
-    --wine-bright: #7a3049;
-    --rose: #bd6d88;
-    --rose-bright: #cf829c;
-    --hairline: rgb(255 255 255 / 9%);
-    --hairline-strong: rgb(255 255 255 / 18%);
-    --text-dim: #999;
-    --text-dimmer: #767676;
-    --font-display: "Fraunces", "Iowan Old Style", ui-serif, serif;
-    --radius-lg: 24px;
-    --radius-md: 18px;
-    --radius-sm: 12px;
+  /* Shared brand tokens. assets/directory.css (the episode archive page)
+     reads these too, so the reader and the archive stay one visual
+     identity instead of two coincidentally-similar stylesheets. */
+  --wine: #653044;
+  --wine-bright: #7a3049;
+  --rose: #bd6d88;
+  --rose-bright: #cf829c;
+  --hairline: rgb(255 255 255 / 9%);
+  --hairline-strong: rgb(255 255 255 / 18%);
+  --text-dim: #999;
+  --text-dimmer: #767676;
+  --font-display: "Fraunces", "Iowan Old Style", ui-serif, serif;
+  --radius-lg: 24px;
+  --radius-md: 18px;
+
+  /* Hover and focus state shared by the card-like links: .episode-end__continue
+     here and .ep-card in directory.css. */
+  --lift-border: rgb(207 130 156 / 45%);
+  --lift-shadow:
+    0 18px 40px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(207 130 156 / 12%);
 }
 
 *,
 *::before,
 *::after {
-    box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 html,
 body {
-    margin: 0;
-    min-height: 100%;
-    overflow-x: hidden;
-    overscroll-behavior-x: none;
-    /* Keeps scrolling and pinch-zoom native, but drops the browser's own
-       double-tap-to-zoom so it doesn't fight the double-tap-to-fullscreen
-       gesture on small screens (see scripts.js). */
-    touch-action: manipulation;
+  margin: 0;
+  min-height: 100%;
+  overscroll-behavior-x: none;
+  /* Keeps scrolling and pinch-zoom native, but drops the browser's own
+     double-tap-to-zoom so it doesn't fight the double-tap-to-fullscreen
+     gesture on small screens (see scripts.js). */
+  touch-action: manipulation;
 }
 
 html {
-    scroll-behavior: smooth;
+  /* Clips the panel glows, which spill past the column. Set on html only: with
+     overflow on both html and body, body becomes its own scroll container and
+     position: sticky (the archive's controls bar) stops sticking. */
+  overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
 body {
-    min-height: 100vh;
-    color: #f4f4f4;
-    background: #050505;
+  min-height: 100vh;
+  color: #f4f4f4;
+  background: #050505;
 }
 
 button,
 a {
-    -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
-    font: inherit;
+  font: inherit;
+}
+
+/* Rules that set display (grid, flex, ...) would otherwise override the hidden
+   attribute. */
+[hidden] {
+  display: none !important;
 }
 
 .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .eyebrow {
-    margin: 0 0 10px;
-    color: var(--text-dim);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
-/* Shared button component. Both pages build their retry/secondary buttons
-   from this — assets/scripts.js and assets/directory.js hand out the
-   .btn/.btn--ghost classes when they create each button — so there is one
-   literal definition of "what a button looks like" instead of two that can
-   quietly drift apart. */
+/* Shared button component, used by both pages and by the retry and secondary
+   buttons that scripts.js and directory.js create. */
 .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    padding: 13px 22px;
-    color: #f5f5f5;
-    font-size: 14px;
-    font-weight: 560;
-    text-decoration: none;
-    border-radius: 999px;
-    cursor: pointer;
-    transition:
-        background 160ms ease,
-        border-color 160ms ease,
-        transform 160ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 22px;
+  color: #f5f5f5;
+  font-size: 14px;
+  font-weight: 560;
+  text-decoration: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
 }
 
 .btn:active {
-    transform: scale(0.97);
+  transform: scale(0.97);
 }
 
 .btn--primary {
-    background: linear-gradient(155deg, var(--wine-bright), var(--wine));
-    border: 1px solid rgb(255 255 255 / 8%);
+  background: linear-gradient(155deg, var(--wine-bright), var(--wine));
+  border: 1px solid rgb(255 255 255 / 8%);
 }
 
 .btn--primary:hover {
-    background: linear-gradient(155deg, #8a3654, var(--wine-bright));
+  background: linear-gradient(155deg, #8a3654, var(--wine-bright));
 }
 
 .btn--ghost {
-    background: rgb(255 255 255 / 3%);
-    border: 1px solid var(--hairline-strong);
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--hairline-strong);
 }
 
 .btn--ghost:hover {
-    background: rgb(255 255 255 / 7%);
-    border-color: rgb(255 255 255 / 26%);
+  background: rgb(255 255 255 / 7%);
+  border-color: rgb(255 255 255 / 26%);
 }
 
-/* One focus ring, applied everywhere, instead of an enumerated list of
-   selectors that inevitably misses something (this used to miss the
-   archive's own filter/sort buttons and the episode-end arrows entirely). */
+/* One focus ring for every link and button on both pages. */
 a:focus-visible,
 button:focus-visible {
-    outline: 2px solid var(--rose-bright);
-    outline-offset: 3px;
+  outline: 2px solid var(--rose-bright);
+  outline-offset: 3px;
 }
 
 /* Dark vignette: viewport chrome (constant contrast wash). Fixed, separate
    from the per-panel ambient glows which live in normal flow. */
 .ambient-vignette {
-    position: fixed;
-    z-index: 0;
-    inset: 0;
-    background:
-        linear-gradient(to bottom, rgb(5 5 5 / 34%), rgb(5 5 5 / 58%)),
-        radial-gradient(circle at center, transparent 0, rgb(5 5 5 / 24%) 68%);
-    pointer-events: none;
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  background:
+    linear-gradient(to bottom, rgb(5 5 5 / 34%), rgb(5 5 5 / 58%)),
+    radial-gradient(circle at center, transparent 0, rgb(5 5 5 / 24%) 68%);
+  pointer-events: none;
 }
 
 .reader {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    margin-inline: auto;
-    /* Glow layers intentionally overflow the column; do not clip. */
-    overflow: visible;
-    background: transparent;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin-inline: auto;
 }
 
-.reader[hidden] {
-    display: none;
-}
-
-/* Strip is the 800px content column. Zoom scales the whole unit so
-   adjacent panels stay pixel-snapped. Glows break out of this width via
-   absolute positioning relative to each .panel. Background keeps the
-   column opaque while sides show the ambient wash. */
+/* The content column, --panel-width wide. Zoom (set by updateScale in
+   scripts.js) scales the whole unit on narrower screens so adjacent panels stay
+   pixel-snapped. Glows break out of this width via absolute positioning
+   relative to each .panel. The black background keeps the column opaque while
+   the sides show the ambient wash. */
 .strip {
-    width: var(--panel-width);
-    margin-inline: auto;
-    line-height: 0;
-    background: #000;
+  width: var(--panel-width);
+  margin-inline: auto;
+  background: #000;
 }
 
 /* Full-bleed panel: the sharp image stays in the column; the glow is a
    separate layer centered on the same vertical band and allowed to spill
    past the reader edges. No JS measurement — position is pure layout. */
 .panel {
-    position: relative;
-    display: block;
-    width: var(--panel-width);
+  position: relative;
+  width: var(--panel-width);
 }
 
 .panel__image,
 .panel-unavailable {
-    position: relative;
-    z-index: 1;
-    display: block;
-    width: var(--panel-width);
+  position: relative;
+  z-index: 1;
+  width: var(--panel-width);
 }
 
 .panel__image {
-    height: auto;
-    background: #0a0a0a;
+  display: block;
+  height: auto;
+  background: #0a0a0a;
 }
 
 /* Ambient glow: the same image, blurred and saturated, behind the sharp
@@ -214,115 +219,118 @@ button:focus-visible {
    heights. Browsers without plus-lighter fall back to normal blending
    (a faint seam line, nothing worse). */
 .panel__glow {
-    position: absolute;
-    z-index: 0;
-    top: 0;
-    left: 50%;
-    width: var(--panel-width);
-    height: 100%;
-    object-fit: fill;
-    filter: blur(48px) saturate(1.18);
-    mix-blend-mode: plus-lighter;
-    /* Hidden until decoded and composited (see attachGlow in scripts.js) —
-       avoids one frame of the unfiltered, scaled-up panel flashing at the
-       sides before blur is applied. */
-    opacity: 0;
-    transform: translateX(-50%) scaleX(1.3);
-    pointer-events: none;
-    backface-visibility: hidden;
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 50%;
+  width: var(--panel-width);
+  height: 100%;
+  object-fit: fill;
+  filter: blur(48px) saturate(1.18);
+  mix-blend-mode: plus-lighter;
+  /* Hidden until decoded and composited (see attachGlow in scripts.js) —
+     avoids one frame of the unfiltered, scaled-up panel flashing at the
+     sides before blur is applied. */
+  opacity: 0;
+  transform: translateX(-50%) scaleX(1.3);
+  pointer-events: none;
+  backface-visibility: hidden;
 }
 
 .panel__glow.is-ready {
-    opacity: 0.5;
+  opacity: 0.5;
 }
 
 /* Below the column width the panels are full-bleed, so side glow is never
-   visible. Drop it entirely rather than paint work no one can see. */
+   visible. Drop it entirely rather than paint work no one can see. The
+   breakpoint is --panel-width (media queries can't read custom properties). */
 @media (max-width: 800px) {
-    .panel__glow,
-    .ambient-vignette {
-        display: none;
-    }
+  .panel__glow,
+  .ambient-vignette {
+    display: none;
+  }
 }
 
+/* Its height comes from the aspect ratio set inline (see
+   createPanelUnavailable in scripts.js), matching the panel it stands in for.
+   min-height: 0 keeps it from growing with its content, so a retry can't shift
+   the panels below. */
 .panel-unavailable {
-    display: grid;
-    place-items: center;
-    padding: 80px;
-    color: #c7c7c7;
-    text-align: center;
-    background:
-        linear-gradient(135deg, rgb(255 255 255 / 3%), transparent 45%), #0b0b0b;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 80px;
+  color: #c7c7c7;
+  text-align: center;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 3%), transparent 45%), #0b0b0b;
 }
 
 .panel-unavailable__content {
-    width: min(520px, 100%);
+  width: min(520px, 100%);
 }
 
 .panel-unavailable strong {
-    display: block;
-    margin-bottom: 14px;
-    color: #f2f2f2;
-    font-family: var(--font-display);
-    font-size: 30px;
-    font-weight: 600;
+  display: block;
+  margin-bottom: 14px;
+  color: #f2f2f2;
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
 }
 
 .panel-unavailable p {
-    margin: 0 0 26px;
-    color: var(--text-dim);
-    font-size: 20px;
-    line-height: 1.5;
+  margin: 0 0 26px;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1.5;
 }
 
 .viewer-state,
 .noscript-state {
-    position: fixed;
-    z-index: 30;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    min-height: 100svh;
-    padding: 24px;
-    background:
-        radial-gradient(
-            circle at 50% 42%,
-            rgb(90 32 50 / 16%),
-            transparent 38%
-        ),
-        #050505;
-    transition:
-        opacity 260ms ease,
-        visibility 260ms ease;
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  padding: 24px;
+  background:
+    radial-gradient(
+      circle at 50% 42%,
+      rgb(90 32 50 / 16%),
+      transparent 38%
+    ),
+    #050505;
+  transition:
+    opacity 260ms ease,
+    visibility 260ms ease;
 }
 
 .viewer-state.is-hidden {
-    visibility: hidden;
-    opacity: 0;
+  visibility: hidden;
+  opacity: 0;
 }
 
 /* Shared "glass card" component: the reader's error card and the archive's
-   empty/no-results card are the same visual pattern (chrome, heading, and
-   detail text below), so they're one literal rule instead of two similar
-   ones. Each page's own stylesheet only adds what's genuinely specific to
-   its context — see assets/directory.css for how the archive's cards are
-   placed within the normal page flow, which the reader's never needs to be
-   since it's centered by its fixed-position overlay parent instead. */
+   empty and error cards. Each page's stylesheet adds only what's specific to
+   its context; directory.css places the archive's cards in the normal page
+   flow, while the reader's is centered by its fixed-position overlay. */
 .viewer-state__card,
 .archive-empty,
 .archive-error__card {
-    width: min(440px, 100%);
-    padding: clamp(30px, 7vw, 46px);
-    text-align: center;
-    background: linear-gradient(
-        145deg,
-        rgb(255 255 255 / 5%),
-        rgb(255 255 255 / 2%)
-    );
-    border: 1px solid var(--hairline-strong);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
-    backdrop-filter: blur(18px);
+  width: min(440px, 100%);
+  padding: clamp(30px, 7vw, 46px);
+  text-align: center;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 5%),
+    rgb(255 255 255 / 2%)
+  );
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
+  backdrop-filter: blur(18px);
 }
 
 /* Default (non-error) loading state: no card, no heading, no explanatory
@@ -333,122 +341,122 @@ button:focus-visible {
    .visually-hidden on those elements in index.html) — this only removes
    the *visual* chrome for the quiet case. */
 .viewer-state:not(.is-error) .viewer-state__card {
-    padding: 0;
-    background: none;
-    border: none;
-    box-shadow: none;
-    backdrop-filter: none;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .viewer-state h1,
 .noscript-state h1,
 .archive-empty strong,
 .archive-error__card strong {
-    display: block;
-    margin: 0;
-    color: #f7f7f7;
-    font-family: var(--font-display);
-    font-size: clamp(22px, 5vw, 28px);
-    font-weight: 620;
-    letter-spacing: -0.01em;
+  display: block;
+  margin: 0;
+  color: #f7f7f7;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 5vw, 28px);
+  font-weight: 620;
+  letter-spacing: -0.01em;
 }
 
 .viewer-state__detail,
 .archive-empty p,
 .archive-error__card p {
-    max-width: 310px;
-    margin: 14px auto 0;
-    color: var(--text-dim);
-    font-size: 15px;
-    line-height: 1.65;
+  max-width: 310px;
+  margin: 14px auto 0;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1.65;
 }
 
 .viewer-state__retry {
-    margin-top: 28px;
+  margin-top: 28px;
 }
 
 .viewer-state__loader {
-    position: relative;
-    width: 112px;
-    height: 2px;
-    margin: 30px auto 0;
-    overflow: hidden;
-    background: #242424;
-    border-radius: 999px;
+  position: relative;
+  width: 112px;
+  height: 2px;
+  margin: 30px auto 0;
+  overflow: hidden;
+  background: #242424;
+  border-radius: 999px;
 }
 
 .viewer-state:not(.is-error) .viewer-state__loader {
-    margin-top: 0;
+  margin-top: 0;
 }
 
 .viewer-state__loader span {
-    position: absolute;
-    inset: 0;
-    width: 45%;
-    background: linear-gradient(90deg, transparent, var(--rose), transparent);
-    animation: loading-sweep 1.15s ease-in-out infinite;
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, var(--rose), transparent);
+  animation: loading-sweep 1.15s ease-in-out infinite;
 }
 
 .viewer-state.is-error .viewer-state__loader {
-    display: none;
+  display: none;
 }
 
 .episode-end {
-    position: relative;
-    z-index: 1;
-    width: min(800px, 100%);
-    min-height: 280px;
-    margin-inline: auto;
-    padding: clamp(54px, 10vw, 80px) clamp(24px, 7vw, 56px);
-    text-align: center;
-    background:
-        radial-gradient(circle at 50% 0%, rgb(122 48 73 / 22%), transparent 60%),
-        #080808;
-    border-top: 1px solid rgb(255 255 255 / 7%);
+  position: relative;
+  z-index: 1;
+  width: min(var(--panel-width), 100%);
+  min-height: 280px;
+  margin-inline: auto;
+  padding: clamp(54px, 10vw, 80px) clamp(24px, 7vw, 56px);
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 0%, rgb(122 48 73 / 22%), transparent 60%),
+    #080808;
+  border-top: 1px solid rgb(255 255 255 / 7%);
 }
 
 .episode-end h2 {
-    margin: 0;
-    color: #f3f3f3;
-    font-family: var(--font-display);
-    font-size: clamp(24px, 6vw, 34px);
-    font-weight: 600;
-    letter-spacing: -0.01em;
+  margin: 0;
+  color: #f3f3f3;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 6vw, 34px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .episode-end__detail {
-    margin: 14px 0 0;
-    color: #a8a8a8;
-    font-size: 15px;
-    line-height: 1.6;
+  margin: 14px 0 0;
+  color: #a8a8a8;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .episode-end__nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    width: min(560px, 100%);
-    margin: 40px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: min(560px, 100%);
+  margin: 40px auto 0;
 }
 
 .episode-end__continue {
-    display: flex;
-    align-items: center;
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    padding: 17px 22px;
-    color: #f4f4f4;
-    text-align: center;
-    text-decoration: none;
-    background: rgb(255 255 255 / 5%);
-    border: 1px solid rgb(255 255 255 / 10%);
-    border-radius: var(--radius-md);
-    transition:
-        transform 220ms ease,
-        border-color 220ms ease,
-        box-shadow 220ms ease;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 17px 22px;
+  color: #f4f4f4;
+  text-align: center;
+  text-decoration: none;
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: var(--radius-md);
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
 }
 
 /* Flex items default to a min-width equal to their content's un-wrapped
@@ -457,178 +465,160 @@ button:focus-visible {
    lets .episode-end__continue strong's ellipsis actually engage instead of
    pushing the whole nav row wider than the viewport. */
 .episode-end__continue > span {
-    flex: 1 1 auto;
-    min-width: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-/* Identical lift-and-glow recipe to .ep-card's hover/focus state in
-   assets/directory.css (same transform, same border-color, same two-layer
-   shadow) — this is the site's one "interactive card" motion signature,
-   reused wherever something card-like invites a click. */
+/* The site's one "interactive card" lift: the same transform, border and
+   shadow as .ep-card's hover/focus state in directory.css. */
 .episode-end__continue:hover,
 .episode-end__continue:focus-visible {
-    transform: translateY(-4px);
-    border-color: rgb(207 130 156 / 45%);
-    box-shadow:
-        0 18px 40px rgb(0 0 0 / 45%),
-        0 0 0 1px rgb(207 130 156 / 12%);
+  transform: translateY(-4px);
+  border-color: var(--lift-border);
+  box-shadow: var(--lift-shadow);
 }
 
 .episode-end__continue small,
 .episode-end__continue strong {
-    display: block;
+  display: block;
 }
 
 .episode-end__continue small {
-    margin-bottom: 4px;
-    color: var(--text-dimmer);
-    font-size: 11px;
-    font-weight: 650;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+  margin-bottom: 4px;
+  color: var(--text-dimmer);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .episode-end__continue strong {
-    overflow: hidden;
-    font-size: 15px;
-    font-weight: 560;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .episode-end__arrow {
-    display: grid;
-    flex: 0 0 auto;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    color: #f5dce4;
-    text-decoration: none;
-    background: var(--wine);
-    border-radius: 999px;
-    transition:
-        background 180ms ease,
-        transform 180ms ease;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: #f5dce4;
+  text-decoration: none;
+  background: var(--wine);
+  border-radius: 999px;
+  transition:
+    background 180ms ease,
+    transform 180ms ease;
 }
 
 .episode-end__arrow:hover,
 .episode-end__arrow:focus-visible {
-    background: var(--wine-bright);
-    transform: translateY(-2px);
+  background: var(--wine-bright);
+  transform: translateY(-2px);
 }
 
-.prev-episode,
-.next-episode {
-    --pull-progress: 0;
-    position: fixed;
-    z-index: 20;
-    right: 50%;
-    width: min(280px, calc(100% - 32px));
-    padding: 12px 16px;
-    overflow: hidden;
-    color: #ddd;
-    font-size: 14px;
-    font-weight: 560;
-    line-height: 1.4;
-    text-align: center;
-    background: rgb(24 24 24 / 94%);
-    border: 1px solid rgb(255 255 255 / 12%);
-    border-radius: 999px;
-    box-shadow: 0 12px 34px rgb(0 0 0 / 36%);
-    opacity: var(--pull-progress);
-    transition:
-        opacity 120ms ease-out,
-        transform 120ms ease-out;
-    pointer-events: none;
+.pull-indicator {
+  --pull-progress: 0;
+  position: fixed;
+  z-index: 20;
+  right: 50%;
+  width: min(280px, calc(100% - 32px));
+  padding: 12px 16px;
+  overflow: hidden;
+  color: #ddd;
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 1.4;
+  text-align: center;
+  background: rgb(24 24 24 / 94%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  box-shadow: 0 12px 34px rgb(0 0 0 / 36%);
+  opacity: var(--pull-progress);
+  transition:
+    opacity 120ms ease-out,
+    transform 120ms ease-out;
+  pointer-events: none;
 }
 
-.prev-episode {
-    top: calc(16px + env(safe-area-inset-top));
-    transform: translate(50%, calc(-24px * (1 - var(--pull-progress))));
+/* Each slides in from the edge it's pulled from. */
+.pull-indicator--prev {
+  top: calc(16px + env(safe-area-inset-top));
+  transform: translate(50%, calc(-24px * (1 - var(--pull-progress))));
 }
 
-.next-episode {
-    bottom: calc(16px + env(safe-area-inset-bottom));
-    transform: translate(50%, calc(24px * (1 - var(--pull-progress))));
+.pull-indicator--next {
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translate(50%, calc(24px * (1 - var(--pull-progress))));
 }
 
-.prev-episode[hidden],
-.next-episode[hidden],
-.episode-end[hidden],
-.episode-end__continue[hidden],
-.episode-end__arrow[hidden],
-.viewer-state__retry[hidden] {
-    display: none;
+.pull-indicator__label {
+  position: relative;
+  z-index: 1;
 }
 
-.prev-episode__label,
-.next-episode__label {
-    position: relative;
-    z-index: 1;
+.pull-indicator__progress {
+  position: absolute;
+  inset: 0;
+  background: rgb(255 255 255 / 10%);
+  transform: scaleX(var(--pull-progress));
+  transform-origin: left;
 }
 
-.prev-episode__progress,
-.next-episode__progress {
-    position: absolute;
-    inset: 0;
-    background: rgb(255 255 255 / 10%);
-    transform: scaleX(var(--pull-progress));
-    transform-origin: left;
+.pull-indicator.is-ready {
+  color: #fff;
+  background: rgb(42 26 32 / 96%);
+  border-color: rgb(207 130 156 / 28%);
 }
 
-.prev-episode.is-ready,
-.next-episode.is-ready {
-    color: #fff;
-    background: rgb(42 26 32 / 96%);
-    border-color: rgb(207 130 156 / 28%);
-}
-
-.prev-episode.is-loading,
-.next-episode.is-loading {
-    --pull-progress: 1;
+.pull-indicator.is-loading {
+  --pull-progress: 1;
 }
 
 @keyframes loading-sweep {
-    from {
-        transform: translateX(-120%);
-    }
-    to {
-        transform: translateX(280%);
-    }
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(280%);
+  }
 }
 
 @media (max-width: 520px) {
-    .viewer-state,
-    .noscript-state {
-        padding: 16px;
-    }
+  .viewer-state,
+  .noscript-state {
+    padding: 16px;
+  }
 
-    .viewer-state__card,
-    .archive-empty,
-    .archive-error__card {
-        border-radius: 20px;
-    }
+  .viewer-state__card,
+  .archive-empty,
+  .archive-error__card {
+    border-radius: 20px;
+  }
 
-    .episode-end {
-        min-height: 250px;
-    }
+  .episode-end {
+    min-height: 250px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html {
-        scroll-behavior: auto;
-    }
+  html {
+    scroll-behavior: auto;
+  }
 
-    .viewer-state,
-    .btn,
-    .episode-end__continue,
-    .prev-episode,
-    .next-episode {
-        transition: none;
-    }
+  .viewer-state,
+  .btn,
+  .episode-end__continue,
+  .pull-indicator {
+    transition: none;
+  }
 
-    .viewer-state__loader span {
-        animation: none;
-        transform: translateX(65%);
-    }
+  .viewer-state__loader span {
+    animation: none;
+    transform: translateX(65%);
+  }
 }

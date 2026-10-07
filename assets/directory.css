@@ -1,29 +1,20 @@
 /*
   Episode Archive stylesheet.
 
-  This is a companion sheet to assets/styles.css, not a replacement — the
-  reader's base (color-scheme, body reset, .eyebrow, focus rings, tap
-  highlight removal) is loaded first and reused here. Everything below is
-  specific to the archive/browse page: the hero, the search+filter bar, the
+  A companion to assets/styles.css, which this page loads first: the base
+  (color-scheme, body reset, .eyebrow, focus rings, tap highlight removal), the
+  shared tokens (--wine, --rose, --hairline, --text-dim, --font-display,
+  --radius-*, --lift-*) and the buttons all come from there. Everything below
+  is specific to the archive page: the hero, the search and filter bar, the
   season sections, and the episode cards.
 */
 
-/* --wine, --rose, --hairline, --text-dim, --font-display, --radius-* etc.
-   now live in assets/styles.css, which this page also loads, so the reader
-   and the archive share one token set instead of two copies that could
-   drift apart. Only this page's own extra token stays here. */
 :root {
   --ink-raised: #0d0d0d;
 }
 
-body.archive {
-  position: relative;
-  overflow-x: hidden;
-}
-
-/* Static atmospheric wash behind the hero. Unlike the reader's .ambient
-   layer, nothing here is measured from image positions — it's a fixed,
-   purely decorative gradient, so it costs nothing and needs no JS. */
+/* Static atmospheric wash behind the hero: a fixed, purely decorative
+   gradient, so it costs nothing and needs no JS. */
 .archive-ambient {
   position: fixed;
   z-index: 0;
@@ -97,7 +88,11 @@ body.archive {
   animation-delay: 300ms;
 }
 
+/* A column so the number (dd) can sit above its label (dt) via `order`, while
+   the markup keeps the dt before the dd that a description list needs. */
 .hero__stat {
+  display: flex;
+  flex-direction: column;
   margin: 0;
 }
 
@@ -133,10 +128,6 @@ body.archive {
   margin-top: 40px;
   animation-delay: 380ms;
 }
-
-/* .btn / .btn--primary / .btn--ghost now live in assets/styles.css (the
-   shared file) since assets/scripts.js's panel-retry button and this
-   page's own buttons all use them — see that file. */
 
 @keyframes hero-in {
   to {
@@ -220,7 +211,8 @@ body.archive {
   gap: 6px;
 }
 
-.filter-btn {
+.filter-btn,
+.sort-btn {
   padding: 9px 15px;
   color: #ccc;
   font-size: 13px;
@@ -236,7 +228,8 @@ body.archive {
     color 150ms ease;
 }
 
-.filter-btn:hover {
+.filter-btn:hover,
+.sort-btn:hover {
   border-color: var(--hairline-strong);
 }
 
@@ -252,20 +245,6 @@ body.archive {
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  padding: 9px 15px;
-  color: #ccc;
-  font-size: 13px;
-  font-weight: 550;
-  white-space: nowrap;
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: border-color 150ms ease;
-}
-
-.sort-btn:hover {
-  border-color: var(--hairline-strong);
 }
 
 .sort-btn i {
@@ -350,10 +329,8 @@ body.archive {
 
 .ep-item:hover .ep-card,
 .ep-card:focus-visible {
-  border-color: rgb(207 130 156 / 45%);
-  box-shadow:
-    0 18px 40px rgb(0 0 0 / 45%),
-    0 0 0 1px rgb(207 130 156 / 12%);
+  border-color: var(--lift-border);
+  box-shadow: var(--lift-shadow);
 }
 
 .ep-card__thumb {
@@ -496,11 +473,9 @@ body.archive {
 
 /* ---------- Empty / error states ---------- */
 
-/* Chrome, heading, and detail text for these cards are the shared
-   "glass card" component defined in assets/styles.css (identical to the
-   reader's own error card). All that's left here is placement within this
-   page's normal scrolling flow, and the gap above each card's button —
-   the reader gets the equivalent via its own .viewer-state__retry rule. */
+/* These cards are the shared "glass card" component from styles.css. What's
+   left here is their placement in this page's normal flow and the gap above
+   each button (the reader's equivalent is .viewer-state__retry). */
 .archive-empty,
 .archive-error__card {
   margin: 40px auto;
@@ -518,10 +493,6 @@ body.archive {
   color: var(--text-dimmer);
   font-size: 12.5px;
   text-align: center;
-}
-
-.archive-footer a {
-  color: var(--text-dim);
 }
 
 /* ---------- Responsive ---------- */

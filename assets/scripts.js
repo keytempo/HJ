@@ -1,17 +1,30 @@
-// Shared column width every panel is displayed at (see styles.css
-// --panel-width), regardless of that panel's own native resolution —
-// height:auto in CSS renormalizes each panel to this width using its own
-// aspect ratio, so panels are free to have differing native widths.
-const BASE_URL = "https://raw.githubusercontent.com/keytempo/handjumper/main/";
-const PANEL_WIDTH = 800;
+// Reader: shows one episode as a vertical strip of panels, with pull-to-
+// navigate between episodes, saved reading progress, and double-tap fullscreen
+// on touch devices. Archive access and DOM helpers come from shared.js, which
+// loads first.
+
+// Pull-to-navigate. A pull travels PULL_THRESHOLD px to trigger navigation;
+// each px of wheel delta or finger travel counts for a fraction of a px. Touch
+// is below 1 so the pull has some resistance.
 const PULL_THRESHOLD = 120;
-const WHEEL_ARM_DELAY = 240;
-const WHEEL_FINISH_DELAY = 180;
-// Touch-only gesture (bound to touchstart/touchend below, not click/dblclick):
-// two quick taps toggles fullscreen, on any touch device regardless of
-// viewport size. These bound what counts as a single "tap" (quick, roughly
-// stationary) and how close together in time two taps must land to count as
-// a double-tap rather than two unrelated taps.
+const WHEEL_PULL_FACTOR = 0.35;
+const TOUCH_PULL_FACTOR = 0.55;
+// A wheel pull only starts once the wheel has been idle at the edge for
+// WHEEL_ARM_DELAY, so momentum that merely carries the page to the edge doesn't
+// navigate. It ends once the wheel has been idle for WHEEL_FINISH_DELAY.
+const WHEEL_ARM_DELAY = 240; // ms
+const WHEEL_FINISH_DELAY = 180; // ms
+const WHEEL_LINE_HEIGHT = 16; // px per line, for wheels that report lines
+// How close to the top or bottom of the page still counts as being at it.
+const EDGE_TOLERANCE = 2; // px
+// Pause between showing "Loading…" and leaving the page, so the label paints.
+const NAVIGATION_DELAY = 120; // ms
+// The reader is revealed once the first panel has decoded, or after this long.
+const FIRST_PANEL_DECODE_TIMEOUT = 2500; // ms
+// Touch-only gesture (bound to touchstart/touchend, not click/dblclick): two
+// quick taps toggle fullscreen on any touch device, whatever the viewport size.
+// These bound what counts as a single "tap" (quick, roughly stationary) and how
+// close together two taps must land to be a double-tap.
 const DOUBLE_TAP_MAX_INTERVAL = 300; // ms
 const DOUBLE_TAP_MAX_DISTANCE = 24; // px
 // Reading progress (see saveProgress): the localStorage key, and how long
@@ -19,44 +32,28 @@ const DOUBLE_TAP_MAX_DISTANCE = 24; // px
 const PROGRESS_KEY = "hj:progress";
 const PROGRESS_SAVE_DELAY = 300; // ms
 
-class ArchiveRequestError extends Error {
-  constructor(message, status = null) {
-    super(message);
-    this.name = "ArchiveRequestError";
-    this.status = status;
-  }
-}
+// ArrowRight/ArrowLeft navigate to the next/previous episode.
+const KEY_DIRECTIONS = { ArrowRight: "next", ArrowLeft: "prev" };
 
-class EpisodeFormatError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "EpisodeFormatError";
-  }
-}
-
-// Thrown specifically when ep=latest can't be resolved to a real episode
-// number (manifest request failed, or the manifest has nothing usable in
-// it). Kept distinct from ArchiveRequestError/EpisodeFormatError so the
-// viewer can show messaging that doesn't imply the *link* was wrong — the
-// user asked for "latest", not a specific episode.
-class LatestEpisodeUnavailableError extends ArchiveRequestError {
-  constructor(message) {
-    super(message);
+// Thrown when ep=latest can't be resolved to a real episode number (the
+// manifest request failed, or the manifest has nothing usable in it). Separate
+// from ArchiveRequestError/EpisodeFormatError so the viewer can avoid implying
+// that the *link* was wrong: the person asked for "latest", not a specific
+// episode.
+class LatestEpisodeUnavailableError extends Error {
+  constructor(message, options) {
+    super(message, options);
     this.name = "LatestEpisodeUnavailableError";
   }
 }
 
-const query = new URLSearchParams(location.search);
-const epParam = query.get("ep");
+const params = new URLSearchParams(location.search);
+const epParam = params.get("ep");
 const isLatestRequested = epParam === "latest";
 const requestedEpisode = Number.parseInt(epParam || "1", 10);
-// When "latest" is requested this starts as a placeholder; initializeViewer()
-// resolves it to the real newest episode number before it's used for any
-// fetch or image path, so nothing downstream needs to know about "latest".
-let episodeNumber =
-  Number.isInteger(requestedEpisode) && requestedEpisode > 0
-    ? requestedEpisode
-    : 1;
+// With ?ep=latest this starts as a placeholder; initializeViewer() replaces it
+// with the newest episode's number before anything is fetched.
+let episodeNumber = requestedEpisode > 0 ? requestedEpisode : 1;
 
 const reader = document.querySelector(".reader");
 const strip = document.getElementById("strip");
@@ -69,20 +66,40 @@ const episodeEnd = document.getElementById("episode-end");
 const episodeEndTitle = document.getElementById("episode-end-title");
 const episodeEndDetail = document.getElementById("episode-end-detail");
 const continueLink = document.getElementById("episode-end-continue");
-const prevEpisodeLink = document.getElementById("episode-end-prev");
-const nextEpisodeLink = document.getElementById("episode-end-next");
 const nextEpisodeTitle = document.getElementById("next-episode-title");
-const nextEpisodeIndicator = document.getElementById("next-episode");
-const nextEpisodeLabel = nextEpisodeIndicator.querySelector(
-  ".next-episode__label",
-);
-const prevEpisodeIndicator = document.getElementById("prev-episode");
-const prevEpisodeLabel = prevEpisodeIndicator
-  ? prevEpisodeIndicator.querySelector(".prev-episode__label")
-  : null;
 
-let prevEpisodeNumber = episodeNumber > 1 ? episodeNumber - 1 : null;
-let nextEpisodeNumber = null;
+// Everything that differs between going to the previous and the next episode:
+//   word      how the direction reads in the indicator's labels
+//   offset    that episode's position relative to this one in the manifest
+//   isAtEdge  whether the page is at the edge this direction pulls from
+//   number    the episode to go to, or null when there isn't one
+function createDirection(name, word, offset, isAtEdge) {
+  const indicator = document.getElementById(`pull-${name}`);
+  return {
+    word,
+    offset,
+    isAtEdge,
+    indicator,
+    label: indicator.querySelector(".pull-indicator__label"),
+    link: document.getElementById(`episode-end-${name}`),
+    number: null,
+  };
+}
+
+const directions = {
+  prev: createDirection("prev", "previous", -1, isAtTop),
+  next: createDirection("next", "next", 1, isAtBottom),
+};
+
+function otherDirection(name) {
+  return name === "prev" ? "next" : "prev";
+}
+
+// Until the manifest says otherwise, the previous episode is assumed to be N-1.
+function assumePreviousEpisode() {
+  directions.prev.number = episodeNumber > 1 ? episodeNumber - 1 : null;
+}
+
 let pullDistance = 0;
 let pullInput = null;
 let pullDirection = null;
@@ -91,27 +108,26 @@ let wheelArmTimer = null;
 let wheelFinishTimer = null;
 let armedWheelDirection = null;
 let isNavigating = false;
-let resizeFrame = null;
-let tapStartX = null;
-let tapStartY = null;
-let tapStartTime = 0;
-let lastTapTime = 0;
-let lastTapX = 0;
-let lastTapY = 0;
+let tapStart = null; // { x, y, time } of the touch in progress
+let lastTap = null; // { x, y, time } of the previous quick tap
 let progressSaveTimer = null;
 let progressDirty = false;
 
+assumePreviousEpisode();
+
 function updateScale() {
-  if (reader.hidden) return;
-  if (!reader.clientWidth) return; // not laid out yet — avoid zoom: 0
-  const scale = Math.min(reader.clientWidth / PANEL_WIDTH, 1);
-  // CSS zoom participates in layout, so the browser resolves pixel snapping
-  // in the zoomed coordinate system. This eliminates the subpixel seams that
-  // appear with transform: scale(), which composites images out-of-flow and
-  // rounds each panel boundary independently. reader.style.height also no
-  // longer needs a manual override — zoom drives the layout height directly.
+  if (!reader.clientWidth) return; // hidden or not laid out yet: avoid zoom: 0
+  // The column width is the one --panel-width token in styles.css.
+  const panelWidth = Number.parseFloat(
+    getComputedStyle(strip).getPropertyValue("--panel-width"),
+  );
+  const scale = Math.min(reader.clientWidth / panelWidth, 1);
+  // CSS zoom participates in layout, so the browser resolves pixel snapping in
+  // the zoomed coordinate system. That avoids the subpixel seams that
+  // transform: scale() produces, which composites images out of flow and rounds
+  // each panel boundary independently. Zoom also drives the layout height
+  // directly, so the reader needs no height override.
   strip.style.zoom = scale < 1 ? scale : "";
-  reader.style.height = "";
 }
 
 function setViewerState(title, detail, { canRetry = false } = {}) {
@@ -121,76 +137,75 @@ function setViewerState(title, detail, { canRetry = false } = {}) {
   viewerState.setAttribute("role", canRetry ? "alert" : "status");
   viewerStateTitle.textContent = title;
   viewerStateDetail.textContent = detail;
-  // Quiet by default (see the .visually-hidden classes in index.html): the
-  // heading and detail sentence are only worth looking at once there's an
-  // error and a retry to offer. They stay in the DOM either way, so screen
-  // readers still get the "Opening episode" / "Finding the latest episode"
-  // announcements via the live region even while sighted users just see
-  // the thin loader bar.
+  // While loading, only the thin loader is visible. The title and detail stay
+  // in the DOM, visually hidden, so screen readers still hear "Opening episode"
+  // via the live region; they're shown once there's an error and a retry to
+  // offer.
   viewerStateTitle.classList.toggle("visually-hidden", !canRetry);
   viewerStateDetail.classList.toggle("visually-hidden", !canRetry);
   viewerStateRetry.hidden = !canRetry;
 }
 
+function showOpeningState() {
+  setViewerState("Opening episode", "Preparing the panels for you.");
+}
+
+// Fades the overlay out (the transition on .viewer-state), then takes it out of
+// layout once the fade has finished or been interrupted.
 function dismissViewerState() {
   viewerState.classList.add("is-hidden");
-  window.setTimeout(() => {
+  const fades = viewerState
+    .getAnimations()
+    .map((animation) => animation.finished);
+  Promise.allSettled(fades).then(() => {
     if (viewerState.classList.contains("is-hidden")) viewerState.hidden = true;
-  }, 260);
+  });
+}
+
+// The title and detail to show for an error, picked from what went wrong.
+function describeViewerError(error) {
+  if (!navigator.onLine) {
+    return [
+      "You're offline",
+      "Reconnect to the internet, then try opening the episode again.",
+    ];
+  }
+  if (error instanceof LatestEpisodeUnavailableError) {
+    return [
+      "Couldn't find the latest episode",
+      "The archive index didn't load. Try again, or open a specific episode number directly.",
+    ];
+  }
+  if (error instanceof ArchiveRequestError && error.status === 404) {
+    return [
+      "Episode unavailable",
+      "This episode isn't in the archive yet, or the link may be incorrect.",
+    ];
+  }
+  if (error instanceof EpisodeFormatError) {
+    return [
+      "Episode temporarily unavailable",
+      "The archived episode is incomplete. Please try again after the next update.",
+    ];
+  }
+  return [
+    "Couldn't open this episode",
+    "A temporary problem interrupted the archive. Please try again.",
+  ];
 }
 
 function showViewerError(error) {
   reader.hidden = true;
   episodeEnd.hidden = true;
-
-  if (!navigator.onLine) {
-    setViewerState(
-      "You're offline",
-      "Reconnect to the internet, then try opening the episode again.",
-      { canRetry: true },
-    );
-    return;
-  }
-
-  if (error instanceof LatestEpisodeUnavailableError) {
-    setViewerState(
-      "Couldn't find the latest episode",
-      "The archive index didn't load. Try again, or open a specific episode number directly.",
-      { canRetry: true },
-    );
-    return;
-  }
-
-  if (error instanceof ArchiveRequestError && error.status === 404) {
-    setViewerState(
-      "Episode unavailable",
-      "This episode isn't in the archive yet, or the link may be incorrect.",
-      { canRetry: true },
-    );
-    return;
-  }
-
-  if (error instanceof EpisodeFormatError) {
-    setViewerState(
-      "Episode temporarily unavailable",
-      "The archived episode is incomplete. Please try again after the next update.",
-      { canRetry: true },
-    );
-    return;
-  }
-
-  setViewerState(
-    "Couldn't open this episode",
-    "A temporary problem interrupted the archive. Please try again.",
-    { canRetry: true },
-  );
+  const [title, detail] = describeViewerError(error);
+  setViewerState(title, detail, { canRetry: true });
 }
 
-function validateEpisodeMetadata(metadata) {
+function validateEpisodeMetadata(metadata, expectedEpisode) {
   if (!metadata || typeof metadata !== "object") {
     throw new EpisodeFormatError("Episode metadata is not an object");
   }
-  if (metadata.episode !== episodeNumber) {
+  if (metadata.episode !== expectedEpisode) {
     throw new EpisodeFormatError("Episode number does not match the request");
   }
   if (typeof metadata.title !== "string" || !metadata.title.trim()) {
@@ -204,10 +219,9 @@ function validateEpisodeMetadata(metadata) {
   }
 
   metadata.panels.forEach((panel, panelIndex) => {
-    const expectedFilename = `${String(panelIndex + 1).padStart(3, "0")}.webp`;
     if (
       !panel ||
-      panel.file !== expectedFilename ||
+      panel.file !== panelFilename(panelIndex) ||
       !Number.isInteger(panel.width) ||
       panel.width <= 0 ||
       !Number.isInteger(panel.height) ||
@@ -219,61 +233,47 @@ function validateEpisodeMetadata(metadata) {
 }
 
 function createPanelUnavailable(panel, panelIndex) {
-  const placeholder = document.createElement("div");
-  placeholder.className = "panel-unavailable";
-  // Reserve space at the height this panel will actually render at once
-  // loaded — every panel displays at the shared PANEL_WIDTH column
-  // regardless of its own native width, so a retry doesn't shift
-  // everything below it. Left unrounded: this is the exact same formula
-  // the browser uses internally for height:auto on a real <img>, so there
-  // is zero discrepancy (not even sub-pixel) between this and what the
-  // successfully-loaded image renders at.
-  placeholder.style.height = `${(panel.height / panel.width) * PANEL_WIDTH}px`;
+  const placeholder = el("div", "panel-unavailable");
+  // Reserve the height the panel will have once loaded, so a retry doesn't
+  // shift everything below it. This is the same aspect ratio the browser
+  // applies to the real <img> from its width and height attributes, so the two
+  // heights match exactly, even at the sub-pixel level.
+  placeholder.style.aspectRatio = `${panel.width} / ${panel.height}`;
   placeholder.setAttribute("role", "group");
   placeholder.setAttribute("aria-label", `Panel ${panelIndex + 1} unavailable`);
 
-  const content = document.createElement("div");
-  content.className = "panel-unavailable__content";
-
-  const title = document.createElement("strong");
-  title.textContent = `Panel ${panelIndex + 1} couldn't load`;
-
-  const detail = document.createElement("p");
-  detail.textContent =
-    "The space is preserved so you can continue reading without losing your place.";
-
-  const retry = document.createElement("button");
-  retry.type = "button";
-  retry.className = "btn btn--ghost";
-  retry.textContent = "Retry panel";
-  retry.addEventListener("click", () => {
-    const replacement = createPanel(panel, panelIndex);
-    const host = placeholder.closest(".panel") ?? placeholder;
-    host.replaceWith(replacement);
+  const retry = ghostButton("Retry panel", () => {
+    placeholder.closest(".panel").replaceWith(createPanel(panel, panelIndex));
   });
 
-  content.append(title, detail, retry);
+  const content = el("div", "panel-unavailable__content");
+  content.append(
+    el("strong", null, `Panel ${panelIndex + 1} couldn't load`),
+    el(
+      "p",
+      null,
+      "The space is preserved so you can continue reading without losing your place.",
+    ),
+    retry,
+  );
   placeholder.append(content);
   return placeholder;
 }
 
-// Each panel is a full-bleed section: a CSS-blurred ambient layer sits
-// behind the sharp comic panel. No getBoundingClientRect, no stored
-// offsets, no rebuild on resize — the glow is just layout.
-//
-// The glow is only created once the sharp image has loaded, and reuses its
-// already-loaded URL. That keeps it to a single network fetch per panel and
-// means the glow can never load on a different schedule than its panel.
+// Adds the blurred ambient layer behind a panel. CSS positions it entirely
+// (see .panel__glow), so nothing is measured or rebuilt on resize. It's only
+// created once the sharp image has loaded, and reuses that image's URL: one
+// network fetch per panel, and the glow can't load on a different schedule
+// than its panel.
 function attachGlow(wrapper, image) {
-  const glow = document.createElement("img");
-  glow.className = "panel__glow";
+  const glow = el("img", "panel__glow");
   glow.alt = "";
   glow.decoding = "async";
   glow.src = image.currentSrc || image.src;
   wrapper.prepend(glow);
 
-  // Wait for decode + one frame so the blur filter is composited
-  // before we reveal the glow (avoids unfiltered flash / artifacts).
+  // Wait for decode + one frame so the blur filter is composited before the
+  // glow is revealed (avoids an unfiltered flash or artifacts).
   glow.decode().then(
     () => requestAnimationFrame(() => glow.classList.add("is-ready")),
     () => glow.remove(),
@@ -281,12 +281,10 @@ function attachGlow(wrapper, image) {
 }
 
 function createPanel(panel, panelIndex) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "panel";
+  const wrapper = el("div", "panel");
 
-  const image = document.createElement("img");
-  image.className = "panel__image";
-  image.src = `${BASE_URL}archive/episodes/${episodeNumber}/${panel.file}`;
+  const image = el("img", "panel__image");
+  image.src = panelUrl(episodeNumber, panel.file);
   image.width = panel.width;
   image.height = panel.height;
   image.alt = "";
@@ -298,10 +296,7 @@ function createPanel(panel, panelIndex) {
   });
   image.addEventListener(
     "error",
-    () => {
-      const unavailable = createPanelUnavailable(panel, panelIndex);
-      image.replaceWith(unavailable);
-    },
+    () => image.replaceWith(createPanelUnavailable(panel, panelIndex)),
     { once: true },
   );
 
@@ -309,99 +304,59 @@ function createPanel(panel, panelIndex) {
   return wrapper;
 }
 
+// Renders every panel and returns the first panel's image.
 function renderPanels(metadata) {
-  const panels = document.createDocumentFragment();
-  let firstImage = null;
-
-  metadata.panels.forEach((panel, panelIndex) => {
-    const node = createPanel(panel, panelIndex);
-    if (panelIndex === 0) {
-      firstImage = node.querySelector(".panel__image");
-    }
-    panels.append(node);
-  });
-
+  const panels = metadata.panels.map(createPanel);
   episodeTitle.textContent = metadata.title;
   strip.setAttribute(
     "aria-label",
     `${metadata.title}, ${metadata.panelCount} visual panels`,
   );
-  strip.setAttribute("role", "group");
-  strip.replaceChildren(panels);
-  return firstImage;
+  strip.replaceChildren(...panels);
+  return panels[0].querySelector(".panel__image");
 }
 
 function isAtTop() {
-  return window.scrollY <= 2;
+  return window.scrollY <= EDGE_TOLERANCE;
 }
 
 function isAtBottom() {
   return (
     window.scrollY + window.innerHeight >=
-    document.documentElement.scrollHeight - 2
+    document.documentElement.scrollHeight - EDGE_TOLERANCE
   );
 }
 
-function setNextPullLabel(label) {
-  if (nextEpisodeLabel && nextEpisodeLabel.textContent !== label) {
-    nextEpisodeLabel.textContent = label;
+function pullLabel(name, progress, input) {
+  const noun = `${directions[name].word} episode`;
+  if (progress === 1) {
+    return input === "touch"
+      ? `Release for ${noun}`
+      : `${noun[0].toUpperCase()}${noun.slice(1)} ready`;
   }
+  return input === "wheel" ? `Keep scrolling for ${noun}` : `Pull for ${noun}`;
 }
 
-function setPrevPullLabel(label) {
-  if (prevEpisodeLabel && prevEpisodeLabel.textContent !== label) {
-    prevEpisodeLabel.textContent = label;
-  }
+function setPullLabel(name, text) {
+  const { label } = directions[name];
+  if (label.textContent !== text) label.textContent = text;
 }
 
-function setPullDistance(distance, input, direction) {
-  pullDistance = Math.max(0, Math.min(distance, PULL_THRESHOLD));
-  pullInput = pullDistance > 0 ? input : null;
-  pullDirection = pullDistance > 0 ? direction : null;
-  const progress = pullDistance / PULL_THRESHOLD;
-
-  const indicator =
-    direction === "prev" ? prevEpisodeIndicator : nextEpisodeIndicator;
-  const otherIndicator =
-    direction === "prev" ? nextEpisodeIndicator : prevEpisodeIndicator;
-
-  if (otherIndicator) {
-    otherIndicator.style.setProperty("--pull-progress", 0);
-    otherIndicator.classList.remove("is-ready");
-  }
-
-  if (!indicator) return;
-
+function setIndicatorProgress(name, progress) {
+  const { indicator } = directions[name];
   indicator.style.setProperty("--pull-progress", progress);
   indicator.classList.toggle("is-ready", progress === 1);
+}
 
-  if (direction === "prev") {
-    if (progress === 1) {
-      setPrevPullLabel(
-        input === "touch"
-          ? "Release for previous episode"
-          : "Previous episode ready",
-      );
-    } else {
-      setPrevPullLabel(
-        input === "wheel"
-          ? "Keep scrolling for previous episode"
-          : "Pull for previous episode",
-      );
-    }
-  } else if (direction === "next") {
-    if (progress === 1) {
-      setNextPullLabel(
-        input === "touch" ? "Release for next episode" : "Next episode ready",
-      );
-    } else {
-      setNextPullLabel(
-        input === "wheel"
-          ? "Keep scrolling for next episode"
-          : "Pull for next episode",
-      );
-    }
-  }
+function setPullDistance(distance, input, name) {
+  pullDistance = Math.max(0, Math.min(distance, PULL_THRESHOLD));
+  pullInput = pullDistance > 0 ? input : null;
+  pullDirection = pullDistance > 0 ? name : null;
+  const progress = pullDistance / PULL_THRESHOLD;
+
+  setIndicatorProgress(otherDirection(name), 0);
+  setIndicatorProgress(name, progress);
+  setPullLabel(name, pullLabel(name, progress, input));
 }
 
 function resetPull() {
@@ -409,140 +364,77 @@ function resetPull() {
   pullDistance = 0;
   pullInput = null;
   pullDirection = null;
-  if (nextEpisodeIndicator) {
-    nextEpisodeIndicator.style.setProperty("--pull-progress", 0);
-    nextEpisodeIndicator.classList.remove("is-ready");
-  }
-  if (prevEpisodeIndicator) {
-    prevEpisodeIndicator.style.setProperty("--pull-progress", 0);
-    prevEpisodeIndicator.classList.remove("is-ready");
-  }
+  setIndicatorProgress("prev", 0);
+  setIndicatorProgress("next", 0);
+}
+
+// Drops a wheel pull in this direction, whether it's armed or already under
+// way.
+function cancelPull(name) {
+  if (armedWheelDirection !== name && pullDirection !== name) return;
+  window.clearTimeout(wheelArmTimer);
+  resetPull();
 }
 
 function episodeUrl(number) {
   const url = new URL(location.href);
   url.searchParams.set("ep", String(number));
-  return url;
+  return url.href;
 }
 
-function nextEpisodeUrl() {
-  return episodeUrl(nextEpisodeNumber);
-}
-
-function prevEpisodeUrl() {
-  return episodeUrl(prevEpisodeNumber);
-}
-
-function navigateToNextEpisode() {
-  if (isNavigating || nextEpisodeNumber === null) return;
+function navigateTo(name) {
+  const direction = directions[name];
+  if (isNavigating || direction.number === null) return;
 
   isNavigating = true;
-  if (nextEpisodeIndicator) {
-    nextEpisodeIndicator.classList.add("is-loading");
-    setNextPullLabel("Loading next episode…");
-  }
-  window.setTimeout(() => location.assign(nextEpisodeUrl()), 120);
-}
-
-function navigateToPrevEpisode() {
-  if (isNavigating || prevEpisodeNumber === null) return;
-
-  isNavigating = true;
-  if (prevEpisodeIndicator) {
-    prevEpisodeIndicator.classList.add("is-loading");
-    setPrevPullLabel("Loading previous episode…");
-  }
-  window.setTimeout(() => location.assign(prevEpisodeUrl()), 120);
+  const destination = episodeUrl(direction.number);
+  direction.indicator.classList.add("is-loading");
+  setPullLabel(name, `Loading ${direction.word} episode…`);
+  window.setTimeout(() => location.assign(destination), NAVIGATION_DELAY);
 }
 
 function finishPull() {
-  if (pullDistance >= PULL_THRESHOLD) {
-    if (pullDirection === "prev") navigateToPrevEpisode();
-    else if (pullDirection === "next") navigateToNextEpisode();
-    else resetPull();
+  if (pullDistance >= PULL_THRESHOLD && pullDirection !== null) {
+    navigateTo(pullDirection);
   } else {
     resetPull();
   }
 }
 
 function normalizeWheelDelta(event) {
-  if (event.deltaMode === 1) return event.deltaY * 16;
+  if (event.deltaMode === 1) return event.deltaY * WHEEL_LINE_HEIGHT;
   if (event.deltaMode === 2) return event.deltaY * window.innerHeight;
   return event.deltaY;
 }
 
 function handleWheel(event) {
-  if (isNavigating) return;
+  if (isNavigating || event.deltaY === 0) return;
 
-  if (event.deltaY > 0) {
-    if (armedWheelDirection === "prev" || pullDirection === "prev") {
-      window.clearTimeout(wheelArmTimer);
-      resetPull();
-    }
+  const name = event.deltaY > 0 ? "next" : "prev";
+  const direction = directions[name];
+  cancelPull(otherDirection(name));
 
-    if (nextEpisodeNumber === null || !isAtBottom()) {
-      if (armedWheelDirection === "next" || pullDirection === "next") {
-        window.clearTimeout(wheelArmTimer);
-        resetPull();
-      }
-      return;
-    }
-
-    if (armedWheelDirection !== "next") {
-      window.clearTimeout(wheelArmTimer);
-      wheelArmTimer = window.setTimeout(() => {
-        if (isAtBottom()) {
-          armedWheelDirection = "next";
-        }
-      }, WHEEL_ARM_DELAY);
-      return;
-    }
-
-    event.preventDefault();
-    setPullDistance(
-      pullDistance + normalizeWheelDelta(event) * 0.35,
-      "wheel",
-      "next",
-    );
-    window.clearTimeout(wheelFinishTimer);
-    wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
+  if (direction.number === null || !direction.isAtEdge()) {
+    cancelPull(name);
     return;
   }
 
-  if (event.deltaY < 0) {
-    if (armedWheelDirection === "next" || pullDirection === "next") {
-      window.clearTimeout(wheelArmTimer);
-      resetPull();
-    }
-
-    if (prevEpisodeNumber === null || !isAtTop()) {
-      if (armedWheelDirection === "prev" || pullDirection === "prev") {
-        window.clearTimeout(wheelArmTimer);
-        resetPull();
-      }
-      return;
-    }
-
-    if (armedWheelDirection !== "prev") {
-      window.clearTimeout(wheelArmTimer);
-      wheelArmTimer = window.setTimeout(() => {
-        if (isAtTop()) {
-          armedWheelDirection = "prev";
-        }
-      }, WHEEL_ARM_DELAY);
-      return;
-    }
-
-    event.preventDefault();
-    setPullDistance(
-      pullDistance + Math.abs(normalizeWheelDelta(event)) * 0.35,
-      "wheel",
-      "prev",
-    );
-    window.clearTimeout(wheelFinishTimer);
-    wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
+  if (armedWheelDirection !== name) {
+    window.clearTimeout(wheelArmTimer);
+    wheelArmTimer = window.setTimeout(() => {
+      if (direction.isAtEdge()) armedWheelDirection = name;
+    }, WHEEL_ARM_DELAY);
     return;
   }
+
+  event.preventDefault();
+  setPullDistance(
+    pullDistance + Math.abs(normalizeWheelDelta(event)) * WHEEL_PULL_FACTOR,
+    "wheel",
+    name,
+  );
+  window.clearTimeout(wheelFinishTimer);
+  wheelFinishTimer = window.setTimeout(finishPull, WHEEL_FINISH_DELAY);
 }
 
 function handleTouchStart(event) {
@@ -556,46 +448,31 @@ function handleTouchStart(event) {
 }
 
 function handleTouchMove(event) {
-  if (
-    touchY === null ||
-    event.touches.length !== 1 ||
-    isNavigating
-  ) {
-    return;
-  }
+  if (touchY === null || event.touches.length !== 1 || isNavigating) return;
 
   const currentY = event.touches[0].clientY;
-  const delta = touchY - currentY;
+  const delta = touchY - currentY; // positive: finger moving up, toward "next"
   touchY = currentY;
 
-  if (pullDirection === "next") {
+  // A pull already under way keeps tracking the finger (and blocks page
+  // scrolling) until it's released or pushed back to zero.
+  if (pullDirection !== null) {
     event.preventDefault();
-    const newDistance = pullDistance + delta * (delta > 0 ? 0.55 : 1);
+    const pullDelta = pullDirection === "next" ? delta : -delta;
+    const newDistance =
+      pullDistance + pullDelta * (pullDelta > 0 ? TOUCH_PULL_FACTOR : 1);
     if (newDistance <= 0) resetPull();
-    else setPullDistance(newDistance, "touch", "next");
+    else setPullDistance(newDistance, "touch", pullDirection);
     return;
   }
 
-  if (pullDirection === "prev") {
-    event.preventDefault();
-    const pullDelta = -delta;
-    const newDistance = pullDistance + pullDelta * (pullDelta > 0 ? 0.55 : 1);
-    if (newDistance <= 0) resetPull();
-    else setPullDistance(newDistance, "touch", "prev");
-    return;
-  }
+  if (delta === 0) return;
+  const name = delta > 0 ? "next" : "prev";
+  const direction = directions[name];
+  if (direction.number === null || !direction.isAtEdge()) return;
 
-  if (isAtBottom() && delta > 0 && nextEpisodeNumber !== null) {
-    event.preventDefault();
-    setPullDistance(delta * 0.55, "touch", "next");
-    return;
-  }
-
-  if (isAtTop() && delta < 0 && prevEpisodeNumber !== null) {
-    event.preventDefault();
-    setPullDistance(-delta * 0.55, "touch", "prev");
-    return;
-  }
+  event.preventDefault();
+  setPullDistance(Math.abs(delta) * TOUCH_PULL_FACTOR, "touch", name);
 }
 
 function handleTouchEnd() {
@@ -610,104 +487,76 @@ function handleTouchCancel() {
 }
 
 function isFullscreenSupported() {
-  const doc = document.documentElement;
-  return !!(
-    doc.requestFullscreen ||
-    doc.webkitRequestFullscreen ||
-    doc.mozRequestFullScreen ||
-    doc.msRequestFullscreen
-  );
+  const root = document.documentElement;
+  return Boolean(root.requestFullscreen ?? root.webkitRequestFullscreen);
 }
 
 function isFullscreenActive() {
-  return !!(
-    document.fullscreenElement ||
-    document.webkitFullscreenElement ||
-    document.mozFullScreenElement ||
-    document.msFullscreenElement
+  return Boolean(
+    document.fullscreenElement ?? document.webkitFullscreenElement,
   );
 }
 
 function toggleFullscreen() {
-  if (isFullscreenActive()) {
-    const exit =
-      document.exitFullscreen ||
-      document.webkitExitFullscreen ||
-      document.mozCancelFullScreen ||
-      document.msExitFullscreen;
-    exit?.call(document)?.catch?.((error) =>
-      console.warn("Couldn't exit fullscreen:", error),
-    );
-    return;
-  }
-
-  const doc = document.documentElement;
-  const request =
-    doc.requestFullscreen ||
-    doc.webkitRequestFullscreen ||
-    doc.mozRequestFullScreen ||
-    doc.msRequestFullscreen;
-  request?.call(doc)?.catch?.((error) =>
-    console.warn("Couldn't enter fullscreen:", error),
-  );
+  const root = document.documentElement;
+  const exiting = isFullscreenActive();
+  const target = exiting ? document : root;
+  const change = exiting
+    ? (document.exitFullscreen ?? document.webkitExitFullscreen)
+    : (root.requestFullscreen ?? root.webkitRequestFullscreen);
+  const action = exiting ? "exit" : "enter";
+  // The prefixed versions return nothing rather than a promise.
+  change
+    ?.call(target)
+    ?.catch?.((error) => console.warn(`Couldn't ${action} fullscreen:`, error));
 }
 
 function handleFullscreenTapStart(event) {
   if (event.touches.length !== 1) {
-    tapStartX = null;
+    tapStart = null;
     return;
   }
-  tapStartX = event.touches[0].clientX;
-  tapStartY = event.touches[0].clientY;
-  tapStartTime = event.timeStamp;
+  const { clientX: x, clientY: y } = event.touches[0];
+  tapStart = { x, y, time: event.timeStamp };
 }
 
-// Tracked independently of the pull-to-navigate gesture above — this only
-// cares whether two quick, roughly-stationary taps landed close together in
-// time and space, not about scroll position or direction.
+// Tracked independently of the pull-to-navigate gesture above: this only cares
+// whether two quick, roughly stationary taps landed close together in time and
+// space, not about scroll position or direction.
 function handleFullscreenTapEnd(event) {
-  if (tapStartX === null) return;
-  const startX = tapStartX;
-  const startY = tapStartY;
-  const startTime = tapStartTime;
-  tapStartX = null;
+  const start = tapStart;
+  tapStart = null;
+  if (!start || !isFullscreenSupported()) return;
 
-  if (!isFullscreenSupported()) return;
-
-  // A double-tap on a control (retry button, continue link, ...) should
-  // only trigger that control, not also toggle fullscreen.
+  // A double-tap on a control (retry button, continue link, ...) should only
+  // trigger that control, not also toggle fullscreen.
   if (event.target.closest?.("button, a, input, textarea, select")) return;
 
   const touch = event.changedTouches[0];
   if (!touch) return;
 
-  const dx = touch.clientX - startX;
-  const dy = touch.clientY - startY;
   const isStationaryTap =
-    Math.hypot(dx, dy) < DOUBLE_TAP_MAX_DISTANCE &&
-    event.timeStamp - startTime < DOUBLE_TAP_MAX_INTERVAL;
+    Math.hypot(touch.clientX - start.x, touch.clientY - start.y) <
+      DOUBLE_TAP_MAX_DISTANCE &&
+    event.timeStamp - start.time < DOUBLE_TAP_MAX_INTERVAL;
 
   if (!isStationaryTap) {
-    lastTapTime = 0;
+    lastTap = null;
     return;
   }
 
-  const sinceLastTap = event.timeStamp - lastTapTime;
-  const driftFromLastTap = Math.hypot(startX - lastTapX, startY - lastTapY);
-
   if (
-    lastTapTime &&
-    sinceLastTap < DOUBLE_TAP_MAX_INTERVAL &&
-    driftFromLastTap < DOUBLE_TAP_MAX_DISTANCE
+    lastTap &&
+    event.timeStamp - lastTap.time < DOUBLE_TAP_MAX_INTERVAL &&
+    Math.hypot(start.x - lastTap.x, start.y - lastTap.y) <
+      DOUBLE_TAP_MAX_DISTANCE
   ) {
-    lastTapTime = 0; // consumed, so a third fast tap starts a fresh pair
+    lastTap = null; // consumed, so a third fast tap starts a fresh pair
     toggleFullscreen();
     return;
   }
 
-  lastTapTime = event.timeStamp;
-  lastTapX = startX;
-  lastTapY = startY;
+  lastTap = { x: start.x, y: start.y, time: event.timeStamp };
 }
 
 // Reading progress, saved per episode in localStorage as a 0-1 fraction of the
@@ -727,19 +576,20 @@ function readProgressMap() {
 
 function currentProgress() {
   const rect = reader.getBoundingClientRect();
-  if (rect.bottom <= window.innerHeight + 2) return 1; // end of strip in view
+  // End of the strip in view.
+  if (rect.bottom <= window.innerHeight + EDGE_TOLERANCE) return 1;
   return Math.min(Math.max(-rect.top / rect.height, 0), 1);
 }
 
 function saveProgress() {
   window.clearTimeout(progressSaveTimer);
-  // Only after the person has actually scrolled, so merely opening an
-  // episode never overwrites what was saved.
+  // Only after the person has actually scrolled, so merely opening an episode
+  // never overwrites what was saved.
   if (!progressDirty || reader.hidden) return;
   progressDirty = false;
 
-  // Round before testing, so a nudge too small to matter is treated as
-  // "at the top" (entry removed) instead of storing a 0.
+  // Round before testing, so a nudge too small to matter is treated as "at the
+  // top" (entry removed) instead of storing a 0.
   const progress = Math.round(currentProgress() * 1000) / 1000;
   const map = readProgressMap();
   if (progress > 0) map[episodeNumber] = progress;
@@ -747,7 +597,7 @@ function saveProgress() {
   try {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(map));
   } catch {
-    // Storage blocked or full — reading still works, progress just isn't kept.
+    // Storage blocked or full: reading still works, progress just isn't kept.
   }
 }
 
@@ -761,25 +611,20 @@ function restoreProgress() {
   const progress = Number(readProgressMap()[episodeNumber]);
   if (!(progress > 0 && progress < 1)) return; // unread, finished, or junk
   const rect = reader.getBoundingClientRect();
-  window.scrollTo(0, window.scrollY + rect.top + progress * rect.height);
+  // "instant" because html has scroll-behavior: smooth, which would otherwise
+  // animate the jump from the top.
+  window.scrollTo({
+    top: window.scrollY + rect.top + progress * rect.height,
+    behavior: "instant",
+  });
 }
 
 function handleScroll() {
   queueProgressSave();
-  if (armedWheelDirection === "next" && !isAtBottom()) {
-    window.clearTimeout(wheelArmTimer);
-    resetPull();
-  } else if (armedWheelDirection === "prev" && !isAtTop()) {
-    window.clearTimeout(wheelArmTimer);
-    resetPull();
+  // Scrolling away from the edge drops a wheel pull that had armed there.
+  if (armedWheelDirection && !directions[armedWheelDirection].isAtEdge()) {
+    cancelPull(armedWheelDirection);
   }
-}
-
-function handleResize() {
-  window.cancelAnimationFrame(resizeFrame);
-  resizeFrame = window.requestAnimationFrame(() => {
-    updateScale();
-  });
 }
 
 function handleKeydown(event) {
@@ -790,129 +635,118 @@ function handleKeydown(event) {
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if (event.target.isContentEditable) return;
 
-  if (event.key === "ArrowRight" && nextEpisodeNumber !== null) {
-    event.preventDefault();
-    navigateToNextEpisode();
-  } else if (event.key === "ArrowLeft" && prevEpisodeNumber !== null) {
-    event.preventDefault();
-    navigateToPrevEpisode();
+  const name = KEY_DIRECTIONS[event.key];
+  if (!name || directions[name].number === null) return;
+  event.preventDefault();
+  navigateTo(name);
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "hidden") saveProgress();
+}
+
+// Going back to this page can restore it from the back/forward cache exactly
+// as it was left mid-navigation. Undo the "Loading…" state so it's usable.
+function handlePageShow(event) {
+  if (!event.persisted) return;
+  isNavigating = false;
+  resetPull();
+  for (const [name, direction] of Object.entries(directions)) {
+    direction.indicator.classList.remove("is-loading");
+    setPullLabel(name, pullLabel(name, 0));
   }
+}
+
+// Shows each direction's indicator and episode-end link when there's an episode
+// to go to, and points the link at it.
+function syncNavigation() {
+  for (const { number, link, indicator } of Object.values(directions)) {
+    link.hidden = number === null;
+    indicator.hidden = number === null;
+    if (number !== null) link.href = episodeUrl(number);
+  }
+}
+
+function setEpisodeEndText(title, detail) {
+  episodeEndTitle.textContent = title;
+  episodeEndDetail.textContent = detail;
 }
 
 function configureEpisodeEnd(manifest, metadata) {
   episodeEnd.hidden = false;
+  episodeEndTitle.hidden = false;
   continueLink.hidden = true;
-  if (nextEpisodeLink) nextEpisodeLink.hidden = true;
 
-  if (!manifest || !Array.isArray(manifest.episodes)) {
-    episodeEndTitle.textContent = "Episode complete";
-    episodeEndDetail.textContent = "You've reached the end of this episode.";
-    if (prevEpisodeLink) {
-      prevEpisodeLink.hidden = prevEpisodeNumber === null;
-      if (!prevEpisodeLink.hidden) {
-        prevEpisodeLink.href = prevEpisodeUrl();
+  if (!Array.isArray(manifest?.episodes)) {
+    // No manifest: keep the assumed previous episode and offer no next one.
+    setEpisodeEndText(
+      "Episode complete",
+      "You've reached the end of this episode.",
+    );
+    syncNavigation();
+    return;
+  }
+
+  const index = manifest.episodes.findIndex(
+    (entry) => entry?.episode === episodeNumber,
+  );
+  if (index !== -1) {
+    for (const direction of Object.values(directions)) {
+      const neighbor = manifest.episodes[index + direction.offset];
+      if (isListedEpisode(neighbor)) {
+        direction.number = neighbor.episode;
+      } else if (neighbor === undefined) {
+        // The manifest has nothing on this side of the current episode.
+        direction.number = null;
       }
     }
-    if (prevEpisodeIndicator) {
-      prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
-    }
+  }
+  syncNavigation();
+
+  if (directions.next.number === null) {
+    setEpisodeEndText(
+      "You're all caught up",
+      "This is the latest episode currently in the archive.",
+    );
     return;
   }
 
-  const currentEpisodeIndex = manifest.episodes.findIndex(
-    (episode) => episode.episode === episodeNumber,
-  );
-  const precedingEpisode =
-    currentEpisodeIndex > 0 ? manifest.episodes[currentEpisodeIndex - 1] : null;
-  const hasPrecedingEpisode =
-    precedingEpisode &&
-    Number.isInteger(precedingEpisode.episode) &&
-    typeof precedingEpisode.title === "string" &&
-    precedingEpisode.title.trim();
-
-  if (hasPrecedingEpisode) {
-    prevEpisodeNumber = precedingEpisode.episode;
-  } else if (currentEpisodeIndex === 0) {
-    prevEpisodeNumber = null;
-  }
-
-  if (prevEpisodeLink) {
-    prevEpisodeLink.hidden = prevEpisodeNumber === null;
-    if (!prevEpisodeLink.hidden) {
-      prevEpisodeLink.href = prevEpisodeUrl();
-    }
-  }
-
-  if (prevEpisodeIndicator) {
-    prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
-  }
-
-  const followingEpisode = manifest.episodes[currentEpisodeIndex + 1];
-  const hasFollowingEpisode =
-    followingEpisode &&
-    Number.isInteger(followingEpisode.episode) &&
-    typeof followingEpisode.title === "string" &&
-    followingEpisode.title.trim();
-
-  if (currentEpisodeIndex === -1 || !hasFollowingEpisode) {
-    episodeEndTitle.textContent = "You're all caught up";
-    episodeEndDetail.textContent =
-      "This is the latest episode currently in the archive.";
-    return;
-  }
-
-  nextEpisodeNumber = followingEpisode.episode;
-  episodeEndTitle.remove();
-  episodeEndDetail.textContent = `You finished ${metadata.title}`;
-  nextEpisodeTitle.textContent = followingEpisode.title;
-  continueLink.href = nextEpisodeUrl();
+  // The "Up next" card replaces the heading. It stays in the DOM, hidden, to
+  // name the section for screen readers (aria-labelledby).
+  setEpisodeEndText("Episode complete", `You finished ${metadata.title}`);
+  episodeEndTitle.hidden = true;
+  nextEpisodeTitle.textContent = manifest.episodes[index + 1].title;
+  continueLink.href = episodeUrl(directions.next.number);
   continueLink.hidden = false;
-  if (nextEpisodeLink) {
-    nextEpisodeLink.href = nextEpisodeUrl();
-    nextEpisodeLink.hidden = false;
-  }
-  nextEpisodeIndicator.hidden = false;
 }
 
-async function fetchMapFile(mapPath) {
-  let response;
+// archive.py writes totalEpisodes as the authoritative newest episode number
+// in archive/episodes.json, so it's used directly instead of being re-derived.
+function resolveLatestEpisodeNumber(manifest) {
+  const total = manifest?.totalEpisodes;
+  return Number.isInteger(total) && total > 0 ? total : null;
+}
+
+// Fetches the manifest and finds the newest episode in it. Anything that goes
+// wrong becomes a LatestEpisodeUnavailableError.
+async function resolveLatestEpisode() {
   try {
-    response = await fetch(`${BASE_URL}${mapPath}`);
-  } catch (error) {
-    const requestError = new ArchiveRequestError("Archive request failed");
-    requestError.cause = error;
-    throw requestError;
-  }
-  if (!response.ok) {
-    throw new ArchiveRequestError(
-      `Archive request failed with status ${response.status}`,
-      response.status,
+    const manifest = await fetchArchiveJson(MANIFEST_PATH);
+    const episode = resolveLatestEpisodeNumber(manifest);
+    if (episode === null) {
+      throw new EpisodeFormatError("Archive manifest has no episodes listed");
+    }
+    return { manifest, episode };
+  } catch (cause) {
+    throw new LatestEpisodeUnavailableError(
+      "Could not resolve the latest episode",
+      { cause },
     );
   }
-  try {
-    return await response.json();
-  } catch (error) {
-    const formatError = new EpisodeFormatError("Archive map is not valid JSON");
-    formatError.cause = error;
-    throw formatError;
-  }
-}
-
-function resolveLatestEpisodeNumber(manifest) {
-  // archive.py writes totalEpisodes as the authoritative episode count/number
-  // in archive/episodes.json — trust it directly instead of re-deriving it.
-  if (
-    !manifest ||
-    !Number.isInteger(manifest.totalEpisodes) ||
-    manifest.totalEpisodes <= 0
-  ) {
-    return null;
-  }
-  return manifest.totalEpisodes;
 }
 
 function attachViewerEvents() {
-  window.addEventListener("resize", handleResize, { passive: true });
+  window.addEventListener("resize", updateScale, { passive: true });
   window.addEventListener("scroll", handleScroll, { passive: true });
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("touchstart", handleTouchStart, { passive: true });
@@ -927,74 +761,58 @@ function attachViewerEvents() {
   });
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pagehide", saveProgress);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") saveProgress();
-  });
+  window.addEventListener("pageshow", handlePageShow);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
 }
 
 async function initializeViewer() {
-  setViewerState(
-    isLatestRequested ? "Finding the latest episode" : "Opening episode",
-    isLatestRequested
-      ? "Checking the archive for the newest update."
-      : "Preparing the panels for you.",
-  );
-
   let manifest = null;
   if (isLatestRequested) {
+    setViewerState(
+      "Finding the latest episode",
+      "Checking the archive for the newest update.",
+    );
     try {
-      manifest = await fetchMapFile("archive/episodes.json");
-      const latestEpisode = resolveLatestEpisodeNumber(manifest);
-      if (latestEpisode === null) {
-        throw new LatestEpisodeUnavailableError(
-          "Archive manifest has no episodes listed",
-        );
-      }
-      episodeNumber = latestEpisode;
-      prevEpisodeNumber = episodeNumber > 1 ? episodeNumber - 1 : null;
+      const latest = await resolveLatestEpisode();
+      manifest = latest.manifest;
+      episodeNumber = latest.episode;
     } catch (error) {
-      const latestError = new LatestEpisodeUnavailableError(
-        "Could not resolve the latest episode",
-      );
-      latestError.cause = error;
-      console.error(latestError);
-      showViewerError(latestError);
+      console.error(error);
+      showViewerError(error);
       return;
     }
-    setViewerState("Opening episode", "Preparing the panels for you.");
+    assumePreviousEpisode();
   }
+  showOpeningState();
 
   const manifestRequest = manifest
     ? Promise.resolve(manifest)
-    : fetchMapFile("archive/episodes.json").catch((error) => {
+    : fetchArchiveJson(MANIFEST_PATH).catch((error) => {
         console.warn("Episode navigation is unavailable:", error);
         return null;
       });
 
   try {
-    const metadata = await fetchMapFile(`archive/maps/${episodeNumber}.json`);
-    validateEpisodeMetadata(metadata);
+    const metadata = await fetchArchiveJson(episodeMapPath(episodeNumber));
+    validateEpisodeMetadata(metadata, episodeNumber);
     document.title = metadata.title;
 
-    const firstPanel = renderPanels(metadata);
+    const firstImage = renderPanels(metadata);
     reader.hidden = false;
     updateScale();
     restoreProgress();
     attachViewerEvents();
-    if (prevEpisodeIndicator) {
-      prevEpisodeIndicator.hidden = prevEpisodeNumber === null;
-    }
+    syncNavigation();
 
-    if (firstPanel) {
-      await Promise.race([
-        firstPanel.decode().catch(() => undefined),
-        new Promise((resolve) => window.setTimeout(resolve, 2500)),
-      ]);
-    }
+    await Promise.race([
+      firstImage.decode().catch(() => undefined),
+      new Promise((resolve) =>
+        window.setTimeout(resolve, FIRST_PANEL_DECODE_TIMEOUT),
+      ),
+    ]);
     dismissViewerState();
 
-    const resolvedManifest = await manifestRequest;
-    configureEpisodeEnd(resolvedManifest, metadata);
+    configureEpisodeEnd(await manifestRequest, metadata);
   } catch (error) {
     console.error(error);
     showViewerError(error);
@@ -1002,7 +820,7 @@ async function initializeViewer() {
 }
 
 viewerStateRetry.addEventListener("click", () => location.reload());
-// Position is restored per episode above; keep the browser's own scroll
-// restoration (reload, back/forward) from fighting it.
+// Reading position is restored per episode (see restoreProgress); the
+// browser's own scroll restoration on reload and back/forward would fight it.
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 initializeViewer();

@@ -1,5 +1,5 @@
 :root {
-  /* Width of the comic column. scripts.js reads it to scale the column down on
+  /* Width of the comic column. .strip reads it to scale the column down on
      narrower screens. A media query can't read a custom property, so the
      breakpoint on .panel__glow below repeats this number. */
   --panel-width: 800px;
@@ -83,7 +83,10 @@ button {
   display: none !important;
 }
 
-.visually-hidden {
+/* The overlay's title and detail are announced but not shown while it's just
+   loading; an error (.is-error) is what makes them visible. */
+.visually-hidden,
+.viewer-state:not(.is-error) :is(h1, .viewer-state__detail) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -164,22 +167,32 @@ button:focus-visible {
   pointer-events: none;
 }
 
+/* A size container, so .strip can scale itself to the width available here. */
 .reader {
   position: relative;
   z-index: 1;
   width: 100%;
   margin-inline: auto;
+  container-type: inline-size;
 }
 
-/* The content column, --panel-width wide. Zoom (set by updateScale in
-   scripts.js) scales the whole unit on narrower screens so adjacent panels stay
-   pixel-snapped. Glows break out of this width via absolute positioning
-   relative to each .panel. The black background keeps the column opaque while
-   the sides show the ambient wash. */
+/* The content column, --panel-width wide. On narrower screens zoom scales the
+   whole unit down to the reader's width (100cqw / --panel-width, as a plain
+   number via tan(atan2()), capped at 1), so adjacent panels stay pixel-snapped.
+   CSS zoom participates in layout, so the browser resolves pixel snapping in
+   the zoomed coordinate system. That avoids the subpixel seams that
+   transform: scale() produces, which composites images out of flow and rounds
+   each panel boundary independently. Zoom also drives the layout height
+   directly, so the reader needs no height override. Being CSS, it tracks the
+   reader's width continuously with no script measuring and copying it.
+   Glows break out of this width via absolute positioning relative to each
+   .panel. The black background keeps the column opaque while the sides show
+   the ambient wash. */
 .strip {
   width: var(--panel-width);
   margin-inline: auto;
   background: #000;
+  zoom: min(1, tan(atan2(100cqw, var(--panel-width))));
 }
 
 /* Full-bleed panel: the sharp image stays in the column; the glow is a
@@ -304,11 +317,13 @@ button:focus-visible {
     #050505;
   transition:
     opacity 260ms ease,
-    visibility 260ms ease;
+    display 260ms allow-discrete;
 }
 
+/* Fades out, then leaves layout: display switches at the end of the
+   transition (allow-discrete), which also stops the loader's animation. */
 .viewer-state.is-hidden {
-  visibility: hidden;
+  display: none;
   opacity: 0;
 }
 
@@ -337,9 +352,9 @@ button:focus-visible {
    sentence — just the thin loader below, quietly sitting on the plain
    background. The full glassy card treatment is reserved for the one
    moment there's actually something to read and possibly act on: an error
-   with a retry button. Title/detail stay in the DOM the whole time (see
-   .visually-hidden on those elements in index.html) — this only removes
-   the *visual* chrome for the quiet case. */
+   with a retry button. Title/detail stay in the DOM the whole time, visually
+   hidden by the .visually-hidden rule above — this only removes the
+   *visual* chrome for the quiet case. */
 .viewer-state:not(.is-error) .viewer-state__card {
   padding: 0;
   background: none;
@@ -373,6 +388,10 @@ button:focus-visible {
 
 .viewer-state__retry {
   margin-top: 28px;
+}
+
+.viewer-state:not(.is-error) .viewer-state__retry {
+  display: none;
 }
 
 .viewer-state__loader {

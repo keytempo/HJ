@@ -115,51 +115,20 @@ let progressDirty = false;
 
 assumePreviousEpisode();
 
-function updateScale() {
-  if (!reader.clientWidth) return; // hidden or not laid out yet: avoid zoom: 0
-  // The column width is the one --panel-width token in styles.css.
-  const panelWidth = Number.parseFloat(
-    getComputedStyle(strip).getPropertyValue("--panel-width"),
-  );
-  const scale = Math.min(reader.clientWidth / panelWidth, 1);
-  // CSS zoom participates in layout, so the browser resolves pixel snapping in
-  // the zoomed coordinate system. That avoids the subpixel seams that
-  // transform: scale() produces, which composites images out of flow and rounds
-  // each panel boundary independently. Zoom also drives the layout height
-  // directly, so the reader needs no height override.
-  strip.style.zoom = scale < 1 ? scale : "";
-}
-
+// While loading, only the thin loader is visible. The title and detail stay in
+// the DOM, visually hidden, so screen readers still hear "Opening episode" via
+// the live region; styles.css shows them, and the retry button, once there's an
+// error (.is-error) to report and a retry to offer.
 function setViewerState(title, detail, { canRetry = false } = {}) {
-  viewerState.hidden = false;
   viewerState.classList.remove("is-hidden");
   viewerState.classList.toggle("is-error", canRetry);
   viewerState.setAttribute("role", canRetry ? "alert" : "status");
   viewerStateTitle.textContent = title;
   viewerStateDetail.textContent = detail;
-  // While loading, only the thin loader is visible. The title and detail stay
-  // in the DOM, visually hidden, so screen readers still hear "Opening episode"
-  // via the live region; they're shown once there's an error and a retry to
-  // offer.
-  viewerStateTitle.classList.toggle("visually-hidden", !canRetry);
-  viewerStateDetail.classList.toggle("visually-hidden", !canRetry);
-  viewerStateRetry.hidden = !canRetry;
 }
 
 function showOpeningState() {
   setViewerState("Opening episode", "Preparing the panels for you.");
-}
-
-// Fades the overlay out (the transition on .viewer-state), then takes it out of
-// layout once the fade has finished or been interrupted.
-function dismissViewerState() {
-  viewerState.classList.add("is-hidden");
-  const fades = viewerState
-    .getAnimations()
-    .map((animation) => animation.finished);
-  Promise.allSettled(fades).then(() => {
-    if (viewerState.classList.contains("is-hidden")) viewerState.hidden = true;
-  });
 }
 
 // The title and detail to show for an error, picked from what went wrong.
@@ -746,7 +715,6 @@ async function resolveLatestEpisode() {
 }
 
 function attachViewerEvents() {
-  window.addEventListener("resize", updateScale, { passive: true });
   window.addEventListener("scroll", handleScroll, { passive: true });
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("touchstart", handleTouchStart, { passive: true });
@@ -799,18 +767,20 @@ async function initializeViewer() {
 
     const firstImage = renderPanels(metadata);
     reader.hidden = false;
-    updateScale();
     restoreProgress();
     attachViewerEvents();
     syncNavigation();
 
+    let decodeTimer;
     await Promise.race([
       firstImage.decode().catch(() => undefined),
-      new Promise((resolve) =>
-        window.setTimeout(resolve, FIRST_PANEL_DECODE_TIMEOUT),
-      ),
+      new Promise((resolve) => {
+        decodeTimer = window.setTimeout(resolve, FIRST_PANEL_DECODE_TIMEOUT);
+      }),
     ]);
-    dismissViewerState();
+    window.clearTimeout(decodeTimer); // decoded first: don't leave the cap pending
+    // Fades the overlay out; CSS then takes it out of layout.
+    viewerState.classList.add("is-hidden");
 
     configureEpisodeEnd(await manifestRequest, metadata);
   } catch (error) {

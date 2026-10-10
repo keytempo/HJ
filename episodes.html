@@ -46,15 +46,15 @@
       <dl class="hero__stats">
         <div class="hero__stat">
           <dt>Episodes</dt>
-          <dd class="is-loading" data-stat="episodes">—</dd>
+          <dd data-stat="episodes"></dd>
         </div>
         <div class="hero__stat">
           <dt>Panels</dt>
-          <dd class="is-loading" data-stat="panels">—</dd>
+          <dd data-stat="panels"></dd>
         </div>
         <div class="hero__stat">
           <dt>Seasons</dt>
-          <dd class="is-loading" data-stat="seasons">—</dd>
+          <dd data-stat="seasons"></dd>
         </div>
       </dl>
       <div class="hero__actions">
@@ -70,7 +70,7 @@
     </header>
 
     <main class="archive-main">
-      <div class="controls" id="controls" data-disabled="true">
+      <div class="controls">
         <label class="search">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
           <input
@@ -85,7 +85,7 @@
         <div class="filters" role="group" aria-label="Filter by season">
           <button
             type="button"
-            class="filter-btn is-active"
+            class="filter-btn"
             data-season="all"
             aria-pressed="true"
             disabled

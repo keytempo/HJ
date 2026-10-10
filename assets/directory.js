@@ -18,7 +18,6 @@ const SEASONS = [
   { key: "s2", label: "Season Two" },
 ];
 
-const controls = document.getElementById("controls");
 const searchInput = document.getElementById("search-input");
 const filterButtons = [...document.querySelectorAll(".filter-btn")];
 const sortButton = document.getElementById("sort-toggle");
@@ -80,11 +79,6 @@ function pluralize(count, noun) {
   return `${formatNumber(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function setStat(element, value) {
-  element.textContent = value;
-  element.classList.remove("is-loading");
-}
-
 function validateEpisodes(manifest) {
   if (!Array.isArray(manifest?.episodes)) {
     throw new EpisodeFormatError("Archive index has no episode list");
@@ -109,9 +103,9 @@ function updateStats(list) {
   const seasonsPresent = new Set(
     list.map((episode) => seasonKey(episode.title)),
   );
-  setStat(statEpisodes, formatNumber(list.length));
-  setStat(statPanels, formatNumber(totalPanels));
-  setStat(statSeasons, formatNumber(seasonsPresent.size));
+  statEpisodes.textContent = formatNumber(list.length);
+  statPanels.textContent = formatNumber(totalPanels);
+  statSeasons.textContent = formatNumber(seasonsPresent.size);
 }
 
 function renderSkeleton() {
@@ -259,9 +253,9 @@ function searchQuery() {
   return searchInput.value.trim();
 }
 
-function matchesQuery(episode, query) {
-  if (!query) return true;
-  const needle = query.toLowerCase();
+// `needle` is the trimmed query, lowercased once per render.
+function matchesQuery(episode, needle) {
+  if (!needle) return true;
   return (
     String(episode.episode) === needle ||
     episode.title.toLowerCase().includes(needle)
@@ -327,9 +321,10 @@ function renderResults() {
   content.replaceChildren();
 
   const query = searchQuery();
+  const needle = query.toLowerCase();
   const filtered = sortList(
     episodes.filter(
-      (episode) => matchesFilter(episode) && matchesQuery(episode, query),
+      (episode) => matchesFilter(episode) && matchesQuery(episode, needle),
     ),
   );
   if (!filtered.length) {
@@ -344,14 +339,11 @@ function renderResults() {
 function setActiveFilter(key) {
   currentFilter = key;
   for (const button of filterButtons) {
-    const active = button.dataset.season === key;
-    button.classList.toggle("is-active", active);
-    button.setAttribute("aria-pressed", String(active));
+    button.setAttribute("aria-pressed", String(button.dataset.season === key));
   }
 }
 
 function enableControls() {
-  controls.dataset.disabled = "false";
   for (const control of [searchInput, ...filterButtons, sortButton]) {
     control.disabled = false;
   }
@@ -382,7 +374,6 @@ function attachControlEvents() {
 }
 
 async function init() {
-  controls.dataset.disabled = "true";
   renderSkeleton();
 
   if (!navigator.onLine) {

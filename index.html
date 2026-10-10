@@ -41,15 +41,12 @@
     <!-- Loading and error overlay. While an episode opens it shows only the
          thin loader (see styles.css). The title and detail stay in the DOM,
          visually hidden, so role="status" still announces them to screen
-         readers; setViewerState() in scripts.js removes .visually-hidden only
-         when there's an error to report and a retry to offer. -->
+         readers; styles.css reveals them, and the retry button, only while
+         the overlay has .is-error. -->
     <div class="viewer-state" id="viewer-state" role="status">
       <div class="viewer-state__card">
-        <h1 id="viewer-state-title" class="visually-hidden">Opening episode</h1>
-        <p
-          class="viewer-state__detail visually-hidden"
-          id="viewer-state-detail"
-        ></p>
+        <h1 id="viewer-state-title">Opening episode</h1>
+        <p class="viewer-state__detail" id="viewer-state-detail"></p>
         <div
           class="viewer-state__loader"
           id="viewer-state-loader"
@@ -61,7 +58,6 @@
           class="btn btn--ghost viewer-state__retry"
           id="viewer-state-retry"
           type="button"
-          hidden
         >
           Try again
         </button>

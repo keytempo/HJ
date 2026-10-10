@@ -49,10 +49,10 @@
   text-align: center;
 }
 
+/* Each child animates in from its hidden state; with no animation running
+   (reduced motion, or a browser that skips it) it simply shows. */
 .hero > * {
-  opacity: 0;
-  animation: hero-in 640ms cubic-bezier(0.16, 0.8, 0.24, 1) forwards;
-  transform: translateY(14px);
+  animation: hero-in 640ms cubic-bezier(0.16, 0.8, 0.24, 1) backwards;
 }
 
 .hero__kicker {
@@ -115,8 +115,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.hero__stat dd.is-loading {
+/* Until the manifest fills it in, a stat reads as a dimmed dash. */
+.hero__stat dd:empty {
   color: var(--text-dimmer);
+}
+
+.hero__stat dd:empty::before {
+  content: "—";
 }
 
 .hero__actions {
@@ -130,9 +135,9 @@
 }
 
 @keyframes hero-in {
-  to {
-    opacity: 1;
-    transform: none;
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
 }
 
@@ -161,7 +166,8 @@
   transition: opacity 200ms ease;
 }
 
-.controls[data-disabled="true"] {
+/* Dimmed and inert while its controls are disabled (until the manifest loads). */
+.controls:has(:disabled) {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -233,7 +239,7 @@
   border-color: var(--hairline-strong);
 }
 
-.filter-btn.is-active {
+.filter-btn[aria-pressed="true"] {
   color: #f5dce4;
   background: var(--wine);
   border-color: transparent;
@@ -532,8 +538,6 @@
 @media (prefers-reduced-motion: reduce) {
   .hero > * {
     animation: none;
-    opacity: 1;
-    transform: none;
   }
 
   .ep-item,

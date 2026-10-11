@@ -9,7 +9,6 @@
 // from `episode` after the Special episode).
 
 const SKELETON_COUNT = 10;
-const SEARCH_DEBOUNCE_MS = 120;
 // localStorage key holding the starred episode numbers (a JSON array).
 const STARRED_KEY = "hj:starred";
 // Season order when grouped; `key` is what seasonKey() returns.
@@ -32,10 +31,10 @@ const statSeasons = document.querySelector('[data-stat="seasons"]');
 let episodes = [];
 let currentFilter = "all";
 let sortDescending = false;
-let searchDebounce = null;
-let starred = loadStarred();
 
-function loadStarred() {
+// localStorage is the only copy of the stars: every read goes to it, so there's
+// nothing in memory to fall out of step with another tab.
+function readStarred() {
   try {
     const stored = JSON.parse(localStorage.getItem(STARRED_KEY));
     return new Set(
@@ -46,15 +45,17 @@ function loadStarred() {
   }
 }
 
+function isStarred(episodeNumber) {
+  return readStarred().has(episodeNumber);
+}
+
 function toggleStar(episodeNumber) {
-  // Re-read first: another tab may have changed the list since this page
-  // loaded, and writing back a stale copy would silently undo its stars.
-  starred = loadStarred();
+  const starred = readStarred();
   if (!starred.delete(episodeNumber)) starred.add(episodeNumber);
   try {
     localStorage.setItem(STARRED_KEY, JSON.stringify([...starred]));
   } catch {
-    // Storage blocked or full: the star still shows for this visit.
+    // Storage blocked or full: the star can't be kept.
   }
 }
 
@@ -163,7 +164,7 @@ function buildStarButton(episode) {
   button.append(icon);
 
   const sync = () => {
-    const on = starred.has(episode.episode);
+    const on = isStarred(episode.episode);
     button.setAttribute("aria-pressed", String(on));
     icon.className = on ? "fa-solid fa-star" : "fa-regular fa-star";
   };
@@ -241,14 +242,14 @@ function matchesFilter(episode) {
     case "special":
       return isSpecial(episode.title);
     case "starred":
-      return starred.has(episode.episode);
+      return isStarred(episode.episode);
     default:
       return true;
   }
 }
 
-// The search box's own value is the single source for the query, so a render
-// never works from a stale copy while a debounced keystroke is still pending.
+// The search box's own value is the only copy of the query; nothing is kept
+// alongside it.
 function searchQuery() {
   return searchInput.value.trim();
 }
@@ -269,7 +270,7 @@ function renderEmptyState(query) {
   const noStars =
     currentFilter === "starred" &&
     !query &&
-    !episodes.some((episode) => starred.has(episode.episode));
+    !episodes.some((episode) => isStarred(episode.episode));
 
   let detail = "Nothing in the archive matches this filter yet.";
   if (noStars) detail = "Tap the star on any episode to save it here.";
@@ -350,10 +351,7 @@ function enableControls() {
 }
 
 function attachControlEvents() {
-  searchInput.addEventListener("input", () => {
-    window.clearTimeout(searchDebounce);
-    searchDebounce = window.setTimeout(renderResults, SEARCH_DEBOUNCE_MS);
-  });
+  searchInput.addEventListener("input", renderResults);
 
   for (const button of filterButtons) {
     button.addEventListener("click", () => {
@@ -398,10 +396,10 @@ async function init() {
   }
 }
 
-// Stars changed in another tab: pick them up without a reload.
+// Stars changed in another tab: redraw (which reads them fresh) so the page
+// doesn't keep showing the old ones.
 window.addEventListener("storage", (event) => {
   if (event.key !== null && event.key !== STARRED_KEY) return;
-  starred = loadStarred();
   renderResults();
 });
 

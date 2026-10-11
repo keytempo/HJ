@@ -17,8 +17,6 @@ const WHEEL_FINISH_DELAY = 180; // ms
 const WHEEL_LINE_HEIGHT = 16; // px per line, for wheels that report lines
 // How close to the top or bottom of the page still counts as being at it.
 const EDGE_TOLERANCE = 2; // px
-// Pause between showing "Loading…" and leaving the page, so the label paints.
-const NAVIGATION_DELAY = 120; // ms
 // The reader is revealed once the first panel has decoded, or after this long.
 const FIRST_PANEL_DECODE_TIMEOUT = 2500; // ms
 // Touch-only gesture (bound to touchstart/touchend, not click/dblclick): two
@@ -27,10 +25,8 @@ const FIRST_PANEL_DECODE_TIMEOUT = 2500; // ms
 // close together two taps must land to be a double-tap.
 const DOUBLE_TAP_MAX_INTERVAL = 300; // ms
 const DOUBLE_TAP_MAX_DISTANCE = 24; // px
-// Reading progress (see saveProgress): the localStorage key, and how long
-// scrolling must pause before the position is written.
+// Reading progress (see saveProgress): the localStorage key.
 const PROGRESS_KEY = "hj:progress";
-const PROGRESS_SAVE_DELAY = 300; // ms
 
 // ArrowRight/ArrowLeft navigate to the next/previous episode.
 const KEY_DIRECTIONS = { ArrowRight: "next", ArrowLeft: "prev" };
@@ -95,11 +91,6 @@ function otherDirection(name) {
   return name === "prev" ? "next" : "prev";
 }
 
-// Until the manifest says otherwise, the previous episode is assumed to be N-1.
-function assumePreviousEpisode() {
-  directions.prev.number = episodeNumber > 1 ? episodeNumber - 1 : null;
-}
-
 let pullDistance = 0;
 let pullInput = null;
 let pullDirection = null;
@@ -110,10 +101,7 @@ let armedWheelDirection = null;
 let isNavigating = false;
 let tapStart = null; // { x, y, time } of the touch in progress
 let lastTap = null; // { x, y, time } of the previous quick tap
-let progressSaveTimer = null;
-let progressDirty = false;
-
-assumePreviousEpisode();
+let progressDirty = false; // the person has scrolled since the last save
 
 // While loading, only the thin loader is visible. The title and detail stay in
 // the DOM, visually hidden, so screen readers still hear "Opening episode" via
@@ -356,10 +344,11 @@ function navigateTo(name) {
   if (isNavigating || direction.number === null) return;
 
   isNavigating = true;
-  const destination = episodeUrl(direction.number);
   direction.indicator.classList.add("is-loading");
   setPullLabel(name, `Loading ${direction.word} episode…`);
-  window.setTimeout(() => location.assign(destination), NAVIGATION_DELAY);
+  // The current page stays on screen, label included, until the next one
+  // commits, so there's nothing to wait for.
+  location.assign(episodeUrl(direction.number));
 }
 
 function finishPull() {
@@ -550,8 +539,9 @@ function currentProgress() {
   return Math.min(Math.max(-rect.top / rect.height, 0), 1);
 }
 
+// Called when the page is left or hidden (see attachViewerEvents), so it reads
+// the position as it is at that moment. Scrolling itself writes nothing.
 function saveProgress() {
-  window.clearTimeout(progressSaveTimer);
   // Only after the person has actually scrolled, so merely opening an episode
   // never overwrites what was saved.
   if (!progressDirty || reader.hidden) return;
@@ -570,12 +560,6 @@ function saveProgress() {
   }
 }
 
-function queueProgressSave() {
-  progressDirty = true;
-  window.clearTimeout(progressSaveTimer);
-  progressSaveTimer = window.setTimeout(saveProgress, PROGRESS_SAVE_DELAY);
-}
-
 function restoreProgress() {
   const progress = Number(readProgressMap()[episodeNumber]);
   if (!(progress > 0 && progress < 1)) return; // unread, finished, or junk
@@ -589,7 +573,7 @@ function restoreProgress() {
 }
 
 function handleScroll() {
-  queueProgressSave();
+  progressDirty = true;
   // Scrolling away from the edge drops a wheel pull that had armed there.
   if (armedWheelDirection && !directions[armedWheelDirection].isAtEdge()) {
     cancelPull(armedWheelDirection);
@@ -647,27 +631,24 @@ function configureEpisodeEnd(manifest, metadata) {
   continueLink.hidden = true;
 
   if (!Array.isArray(manifest?.episodes)) {
-    // No manifest: keep the assumed previous episode and offer no next one.
+    // No manifest, so there's no way to know which episodes exist: offer no
+    // navigation.
     setEpisodeEndText(
       "Episode complete",
       "You've reached the end of this episode.",
     );
-    syncNavigation();
     return;
   }
 
+  // Neighbours come from the manifest alone. A side with no usable entry
+  // keeps number === null, so it offers no navigation.
   const index = manifest.episodes.findIndex(
     (entry) => entry?.episode === episodeNumber,
   );
   if (index !== -1) {
     for (const direction of Object.values(directions)) {
       const neighbor = manifest.episodes[index + direction.offset];
-      if (isListedEpisode(neighbor)) {
-        direction.number = neighbor.episode;
-      } else if (neighbor === undefined) {
-        // The manifest has nothing on this side of the current episode.
-        direction.number = null;
-      }
+      if (isListedEpisode(neighbor)) direction.number = neighbor.episode;
     }
   }
   syncNavigation();
@@ -749,7 +730,6 @@ async function initializeViewer() {
       showViewerError(error);
       return;
     }
-    assumePreviousEpisode();
   }
   showOpeningState();
 
@@ -769,7 +749,6 @@ async function initializeViewer() {
     reader.hidden = false;
     restoreProgress();
     attachViewerEvents();
-    syncNavigation();
 
     let decodeTimer;
     await Promise.race([

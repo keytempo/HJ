@@ -59,6 +59,7 @@ html {
      overflow on both html and body, body becomes its own scroll container and
      position: sticky (the archive's controls bar) stops sticking. */
   overflow-x: hidden;
+  overflow-y: scroll;
   scroll-behavior: smooth;
 }
 
@@ -173,11 +174,10 @@ button:focus-visible {
   z-index: 1;
   width: 100%;
   margin-inline: auto;
-  container-type: inline-size;
 }
 
 /* The content column, --panel-width wide. On narrower screens zoom scales the
-   whole unit down to the reader's width (100cqw / --panel-width, as a plain
+   whole unit down to the reader's width (100vw / --panel-width, as a plain
    number via tan(atan2()), capped at 1), so adjacent panels stay pixel-snapped.
    CSS zoom participates in layout, so the browser resolves pixel snapping in
    the zoomed coordinate system. That avoids the subpixel seams that
@@ -192,7 +192,7 @@ button:focus-visible {
   width: var(--panel-width);
   margin-inline: auto;
   background: #000;
-  zoom: min(1, tan(atan2(100cqw, var(--panel-width))));
+  zoom: min(1, tan(atan2(100vw, var(--panel-width))));
 }
 
 /* Full-bleed panel: the sharp image stays in the column; the glow is a

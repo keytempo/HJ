@@ -1,5 +1,5 @@
 :root {
-  /* Width of the comic column. .strip reads it to scale the column down on
+  /* Width of the comic column. scripts.js reads it to scale the column down on
      narrower screens. A media query can't read a custom property, so the
      breakpoint on .panel__glow below repeats this number. */
   --panel-width: 800px;
@@ -59,7 +59,6 @@ html {
      overflow on both html and body, body becomes its own scroll container and
      position: sticky (the archive's controls bar) stops sticking. */
   overflow-x: hidden;
-  overflow-y: scroll;
   scroll-behavior: smooth;
 }
 
@@ -168,7 +167,6 @@ button:focus-visible {
   pointer-events: none;
 }
 
-/* A size container, so .strip can scale itself to the width available here. */
 .reader {
   position: relative;
   z-index: 1;
@@ -176,23 +174,15 @@ button:focus-visible {
   margin-inline: auto;
 }
 
-/* The content column, --panel-width wide. On narrower screens zoom scales the
-   whole unit down to the reader's width (100vw / --panel-width, as a plain
-   number via tan(atan2()), capped at 1), so adjacent panels stay pixel-snapped.
-   CSS zoom participates in layout, so the browser resolves pixel snapping in
-   the zoomed coordinate system. That avoids the subpixel seams that
-   transform: scale() produces, which composites images out of flow and rounds
-   each panel boundary independently. Zoom also drives the layout height
-   directly, so the reader needs no height override. Being CSS, it tracks the
-   reader's width continuously with no script measuring and copying it.
-   Glows break out of this width via absolute positioning relative to each
-   .panel. The black background keeps the column opaque while the sides show
-   the ambient wash. */
+/* The content column, --panel-width wide. Zoom (set by updateScale in
+   scripts.js) scales the whole unit on narrower screens so adjacent panels stay
+   pixel-snapped. Glows break out of this width via absolute positioning
+   relative to each .panel. The black background keeps the column opaque while
+   the sides show the ambient wash. */
 .strip {
   width: var(--panel-width);
   margin-inline: auto;
   background: #000;
-  zoom: min(1, tan(atan2(100vw, var(--panel-width))));
 }
 
 /* Full-bleed panel: the sharp image stays in the column; the glow is a
